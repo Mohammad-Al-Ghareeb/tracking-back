@@ -6,6 +6,9 @@ info:
 servers:
   - url: http://localhost:8000
     description: Local server
+
+  - url: https://tracking-back-1.onrender.com
+    description: Production server (Render)
 components:
   securitySchemes:
     bearerAuth:
