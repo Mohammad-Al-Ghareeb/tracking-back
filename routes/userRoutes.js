@@ -21,7 +21,7 @@ const {
 } = require("../controllers/userControllers");
 
 // /api/roles
-router.route("/").get(verifyTokenAndAdmin, getAllUsersCtrl);
+router.route("/").get( getAllUsersCtrl);
 // .post(verifyTokenAndAdmin, createRoleCtrl);
 
 // /api/roles/:id

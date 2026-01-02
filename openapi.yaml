@@ -135,24 +135,71 @@ components:
       properties:
         _id:
           type: string
+
         customer:
           $ref: "#/components/schemas/User"
+
         description:
           type: string
+
         status:
           type: string
           enum: [PENDING, IN_PROGRESS, COMPLETED, CANCELLED]
+
         expectedFinishDate:
           type: string
           format: date-time
+
         cost:
           type: number
+
         employee:
           $ref: "#/components/schemas/User"
+
+        sizes:
+          type: array
+          items:
+            type: string
+          example: ["M", "L"]
+
+        colors:
+          type: array
+          items:
+            type: string
+          example: ["red", "blue"]
+
+        deliveryLocation:
+          type: object
+          properties:
+            address:
+              type: string
+              example: "Street 10"
+            city:
+              type: string
+              example: "Istanbul"
+            notes:
+              type: string
+              example: "Near the mall"
+
+        images:
+          type: array
+          items:
+            type: string
+          example:
+            - "2026-01-01-image1.jpg"
+            - "2026-01-01-image2.jpg"
+
+        employeeSignature:
+          type: string
+          example: "employee-sign.png"
+
+        customerSignature:
+          type: string
+          example: "customer-sign.png"
+
         createdAt:
           type: string
           format: date-time
-
 paths:
   /api/auth/register:
     post:
@@ -491,19 +538,80 @@ paths:
                     $ref: "#/components/schemas/Pagination"
     post:
       tags: [Orders]
-      summary: Create order
+      summary: Create order with images and signatures
       security:
         - bearerAuth: []
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
-              $ref: "#/components/schemas/Order"
+              type: object
+              required:
+                - customer
+                - employee
+                - description
+                - cost
+                - expectedFinishDate
+                - deliveryLocation
+              properties:
+                customer:
+                  type: string
+                  description: User ID
+
+                employee:
+                  type: string
+                  description: Employee ID
+
+                description:
+                  type: string
+
+                status:
+                  type: string
+                  enum: [PENDING, IN_PROGRESS, COMPLETED, CANCELLED]
+
+                expectedFinishDate:
+                  type: string
+                  format: date-time
+
+                cost:
+                  type: number
+
+                sizes:
+                  type: string
+                  description: JSON array
+                  example: '["M","L"]'
+
+                colors:
+                  type: string
+                  description: JSON array
+                  example: '["red","blue"]'
+
+                deliveryLocation:
+                  type: string
+                  description: JSON object
+                  example: '{"address":"Street 10","city":"Istanbul"}'
+
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+
+                employeeSignature:
+                  type: string
+                  format: binary
+
+                customerSignature:
+                  type: string
+                  format: binary
       responses:
         "201":
           description: Order created
-
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
   /api/orders/{id}:
     get:
       tags: [Orders]
@@ -518,11 +626,18 @@ paths:
             type: string
       responses:
         "200":
-          description: order
+          description: Order object
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Order"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
     put:
       tags: [Orders]
       summary: Update order
@@ -536,15 +651,51 @@ paths:
             type: string
       requestBody:
         content:
-          application/json:
+          multipart/form-data:
             schema:
-              $ref: "#/components/schemas/Order"
+              type: object
+              properties:
+                description:
+                  type: string
+                status:
+                  type: string
+                  enum: [PENDING, IN_PROGRESS, COMPLETED, CANCELLED]
+                cost:
+                  type: number
+                expectedFinishDate:
+                  type: string
+                  format: date-time
+                sizes:
+                  type: string
+                  example: '["XL"]'
+                colors:
+                  type: string
+                  example: '["black"]'
+                deliveryLocation:
+                  type: string
+                  example: '{"address":"New street"}'
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                employeeSignature:
+                  type: string
+                  format: binary
+                customerSignature:
+                  type: string
+                  format: binary
       responses:
         "200":
-          description: order updated
+          description: Order updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
     delete:
       tags: [Orders]
-      summary: delete order
+      summary: Delete order
       security:
         - bearerAuth: []
       parameters:
@@ -555,4 +706,7 @@ paths:
             type: string
       responses:
         "200":
-          description: deleted
+          description: Order deleted
+          content:
+            application/json:
+              schema:

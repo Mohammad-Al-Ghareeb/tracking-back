@@ -15,10 +15,7 @@ const {
 } = require("../middlewares/verifyToken");
 
 // /api/roles
-router
-  .route("/")
-  .get(getAllRolesCtrl)
-  .post(verifyTokenAndAdmin, createRoleCtrl);
+router.route("/").get(getAllRolesCtrl).post(createRoleCtrl);
 
 // /api/roles/:id
 router

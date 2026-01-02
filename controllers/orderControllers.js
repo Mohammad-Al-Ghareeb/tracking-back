@@ -1,30 +1,137 @@
-const asyncHandler = require("express-async-handler");
-const {
-  Order,
-  validateCreateOrder,
-  validateOrderId,
-  validateUpdateOrder,
-} = require("../models/Order");
+// const asyncHandler = require("express-async-handler");
+// const {
+//   Order,
+//   validateCreateOrder,
+//   validateOrderId,
+//   validateUpdateOrder,
+// } = require("../models/Order");
 
-/**-----------------------------------------------
- * @desc    Create New Order
+// /**-----------------------------------------------
+//  * @desc    Create New Order
+//  * @route   POST /api/orders
+//  * @access  private
+//  ------------------------------------------------*/
+// // module.exports.createOrderCtrl = asyncHandler(async (req, res) => {
+// //   const { error } = validateCreateOrder(req.body);
+// //   if (error) return res.status(400).json({ message: error.details[0].message });
+
+// //   const order = await Order.create({
+// //     customer: req.body.customer,
+// //     description: req.body.description,
+// //     status: req.body.status,
+// //     expectedFinishDate: req.body.expectedFinishDate,
+// //     cost: req.body.cost,
+// //     employee: req.body.employee,
+// //   });
+
+// //   res.status(201).json({ message: "Order created successfully", order });
+// // });
+// module.exports.createOrderCtrl = asyncHandler(async (req, res) => {
+//   console.log(req.body);
+  
+  
+//   // 🔹 parse fields if they come as string
+//   if (req.body.sizes) req.body.sizes = JSON.parse(req.body.sizes);
+//   if (req.body.colors) req.body.colors = JSON.parse(req.body.colors);
+//   if (req.body.deliveryLocation)
+//     req.body.deliveryLocation = JSON.parse(req.body.deliveryLocation);
+//   console.log(req.body);
+
+//   const { error } = validateCreateOrder(req.body);
+//   if (error)
+//     return res.status(400).json({ message: error.details[0].message });
+
+//   const images = req.files?.images
+//     ? req.files.images.map((file) => file.filename)
+//     : [];
+
+//   const employeeSignature = req.files?.employeeSignature
+//     ? req.files.employeeSignature[0].filename
+//     : null;
+
+//   const customerSignature = req.files?.customerSignature
+//     ? req.files.customerSignature[0].filename
+//     : null;
+
+//   const order = await Order.create({
+//     ...req.body,
+//     images,
+//     employeeSignature,
+//     customerSignature,
+//   });
+
+//   res.status(201).json({
+//     message: "Order created successfully",
+//     order,
+//   });
+// });
+
+
+
+const asyncHandler = require("express-async-handler");
+const { Order, validateCreateOrder, validateUpdateOrder, validateOrderId } = require("../models/Order");
+
+const normalizeArray = (value) => {
+   if (!value) return [];
+
+  // إذا كانت Array مثل ['red,blue']
+  if (Array.isArray(value)) {
+    if (value.length === 1 && typeof value[0] === "string") {
+      return value[0].split(",").map(v => v.trim()).filter(Boolean);
+    }
+    return value;
+  }
+
+  // إذا كانت String مباشرة
+  if (typeof value === "string") {
+    return value.split(",").map(v => v.trim()).filter(Boolean);
+  }
+
+  return [];
+};
+/**
+ * @desc    Create new order
  * @route   POST /api/orders
- * @access  private
- ------------------------------------------------*/
-module.exports.createOrderCtrl = asyncHandler(async (req, res) => {
+ * @access  Private
+ */
+const createOrderCtrl = asyncHandler(async (req, res) => {
+
+req.body.sizes = normalizeArray(req.body.sizes);
+req.body.colors = normalizeArray(req.body.colors);
+req.body.images = normalizeArray(req.body.images);
+
+if (req.body.deliveryLocation && typeof req.body.deliveryLocation === "string") {
+    req.body.deliveryLocation = JSON.parse(req.body.deliveryLocation);
+}
+
+
+console.log(req.body);
+
+
+  // Validate body
   const { error } = validateCreateOrder(req.body);
-  if (error) return res.status(400).json({ message: error.details[0].message });
+  if (error) {
+    return res.status(400).json({ message: error.details[0].message });
+  }
+
+  // Handle uploaded files
+  const images =
+    req.files?.images?.map((file) => file.filename) || [];
+
+  const employeeSignature =
+    req.files?.employeeSignature?.[0]?.filename || null;
+
+  const customerSignature =
+    req.files?.customerSignature?.[0]?.filename || null;
 
   const order = await Order.create({
-    customer: req.body.customer,
-    description: req.body.description,
-    status: req.body.status,
-    expectedFinishDate: req.body.expectedFinishDate,
-    cost: req.body.cost,
-    employee: req.body.employee,
+    ...req.body,
+    images,
+    employeeSignature,
+    customerSignature,
   });
 
-  res.status(201).json({ message: "Order created successfully", order });
+  res.status(201).json(order);
 });
 
 /**-----------------------------------------------
@@ -32,7 +139,7 @@ module.exports.createOrderCtrl = asyncHandler(async (req, res) => {
  * @route   GET /api/orders
  * @access  private
  ------------------------------------------------*/
-module.exports.getAllOrdersCtrl = asyncHandler(async (req, res) => {
+const getAllOrdersCtrl = asyncHandler(async (req, res) => {
   const { page = 1, perPage = 10 } = req.query;
 
   const orders = await Order.find()
@@ -56,7 +163,7 @@ module.exports.getAllOrdersCtrl = asyncHandler(async (req, res) => {
  * @route   GET /api/orders/:id
  * @access  private
  ------------------------------------------------*/
-module.exports.getOrderByIdCtrl = asyncHandler(async (req, res) => {
+const getOrderByIdCtrl = asyncHandler(async (req, res) => {
   const { error } = validateOrderId({ id: req.params.id });
   if (error) return res.status(400).json({ message: "Invalid order ID" });
 
@@ -74,7 +181,7 @@ module.exports.getOrderByIdCtrl = asyncHandler(async (req, res) => {
  * @route   PUT /api/orders/:id
  * @access  private
  ------------------------------------------------*/
-module.exports.updateOrderCtrl = asyncHandler(async (req, res) => {
+const updateOrderCtrl = asyncHandler(async (req, res) => {
   const { error } = validateUpdateOrder(req.body);
   if (error) return res.status(400).json({ message: error.details[0].message });
 
@@ -104,7 +211,7 @@ module.exports.updateOrderCtrl = asyncHandler(async (req, res) => {
  * @route   DELETE /api/orders/:id
  * @access  private (admin only)
  ------------------------------------------------*/
-module.exports.deleteOrderCtrl = asyncHandler(async (req, res) => {
+const deleteOrderCtrl = asyncHandler(async (req, res) => {
   const { error } = validateOrderId({ id: req.params.id });
   if (error) return res.status(400).json({ message: "Invalid order ID" });
 
@@ -116,3 +223,11 @@ module.exports.deleteOrderCtrl = asyncHandler(async (req, res) => {
     .status(200)
     .json({ message: "Order deleted successfully", deletedOrder: order });
 });
+
+module.exports = {
+  createOrderCtrl,
+  getAllOrdersCtrl,
+  getOrderByIdCtrl,
+  updateOrderCtrl,
+  deleteOrderCtrl,
+};

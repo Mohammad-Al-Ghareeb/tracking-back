@@ -11,11 +11,13 @@ require("dotenv").config();
 connectToDb();
 const swaggerDocument = YAML.load(path.join(__dirname, "openapi.yaml"));
 
+
 // Init App
 const app = express();
 
 // Middlewares
 app.use(express.json());
+app.use("/images", express.static(path.join(__dirname, "images")));
 
 // Cors Policy
 app.use(
