@@ -18,11 +18,14 @@ const {
   getUserByIdCtrl,
   updateUserCtrl,
   deleteUserCtrl,
+  getAllBriefUsers,
 } = require("../controllers/userControllers");
 
 // /api/roles
-router.route("/").get( getAllUsersCtrl);
+router.route("/").get(getAllUsersCtrl);
 // .post(verifyTokenAndAdmin, createRoleCtrl);
+
+router.get("/brief", getAllBriefUsers);
 
 // /api/roles/:id
 router

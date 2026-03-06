@@ -152,3 +152,18 @@ exports.deleteUserCtrl = asyncHandler(async (req, res) => {
 
   res.status(200).json({ message: "User deleted successfully" });
 });
+
+// إرجاع ملخص المستخدمين: فقط _id و fullName
+exports.getAllBriefUsers = asyncHandler(async (req, res) => {
+  const users = await User.find(
+    { isDeleted: false },
+    { _id: 1, "fullName.firstName": 1, "fullName.lastName": 1 },
+  );
+  // ممكن ترجّع مع fullName أو تصيغها كـ name سهل للعميل
+  const briefUsers = users.map((u) => ({
+    _id: u._id,
+    name: `${u.fullName.firstName} ${u.fullName.lastName}`,
+  }));
+
+  res.status(200).json({ users: briefUsers });
+});

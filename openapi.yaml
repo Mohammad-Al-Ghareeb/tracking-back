@@ -429,6 +429,38 @@ paths:
         "404":
           description: Not found
 
+  /api/users/brief:
+    get:
+      tags: [Users]
+      summary: ID and Name only
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of users (id & name only)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        _id:
+                          type: string
+                        name:
+                          type: string
+              example:
+                users:
+                  - _id: "65fd84abcde123001fc9fb60"
+                    name: "Ahmad Ali"
+                  - _id: "65fd84abcde123001fc9fb61"
+                    name: "Mona Salim"
+        "401":
+          description: Unauthorized
+
   /api/roles:
     get:
       tags: [Roles]
