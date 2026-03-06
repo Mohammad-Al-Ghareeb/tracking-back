@@ -280,10 +280,37 @@ paths:
           name: page
           schema:
             type: integer
+            default: 1
+          description: رقم الصفحة (Pagination)
         - in: query
           name: perPage
           schema:
             type: integer
+            default: 10
+          description: عدد العناصر في الصفحة الواحدة (Pagination)
+        - in: query
+          name: minSalary
+          schema:
+            type: number
+          required: false
+          description: الحد الأدنى للراتب (فلتر اختياري)
+        - in: query
+          name: maxSalary
+          schema:
+            type: number
+          required: false
+          description: الحد الأعلى للراتب (فلتر اختياري)
+        - in: query
+          name: orderByAlpha
+          schema:
+            type: integer
+            enum: [0, 1]
+            default: 0
+          required: false
+          description: |
+            ترتيب حسب الاسم الأول:
+              - 1: من A إلى Z
+              - 0: من Z إلى A (افتراضي)
       responses:
         "200":
           description: List of users
@@ -296,30 +323,25 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/User"
-                  pagination:
-                    $ref: "#/components/schemas/Pagination"
+                  totalCount:
+                    type: integer
+                  documentCount:
+                    type: integer
+              example:
+                users:
+                  - _id: "1"
+                    fullName: { firstName: "Ahmad", lastName: "Ali" }
+                    email: "ahmad@example.com"
+                    username: "ahmad"
+                    role: { _id: "roleId", name: "ADMIN", description: "..." }
+                    salary: 4000
+                    isActive: true
+                    isDeleted: false
+                    createdAt: "2026-03-06T23:23:00.000Z"
+                totalCount: 10
+                documentCount: 54
         "401":
           description: Unauthorized
-    post:
-      tags: [Users]
-      summary: Create a new user (admin only)
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AuthRegister"
-      responses:
-        "201":
-          description: User created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-        "400":
-          description: Validation error
 
   /api/users/{id}:
     get:
@@ -518,10 +540,42 @@ paths:
           name: page
           schema:
             type: integer
+            default: 1
+          description: رقم الصفحة (Pagination)
         - in: query
           name: perPage
           schema:
             type: integer
+            default: 10
+          description: عدد العناصر في الصفحة الواحدة (Pagination)
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [PENDING, IN_PROGRESS, COMPLETED, CANCELLED]
+          description: حالة الطلب (فلتر اختياري)
+        - in: query
+          name: employeeId
+          schema:
+            type: string
+          description: رقم الموظف المسؤول (فلتر اختياري)
+        - in: query
+          name: userId
+          schema:
+            type: string
+          description: رقم تعريف العميل (فلتر اختياري)
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date-time
+          description: تاريخ البداية (فلتر حسب إنشاء الطلب)
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date-time
+          description: تاريخ النهاية (فلتر حسب إنشاء الطلب)
       responses:
         "200":
           description: orders
@@ -534,8 +588,40 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Order"
-                  pagination:
-                    $ref: "#/components/schemas/Pagination"
+                  count:
+                    type: integer
+                  page:
+                    type: integer
+                  perPage:
+                    type: integer
+              example:
+                orders:
+                  - _id: "65fd84abcde123001fc9fb60"
+                    customer:
+                      {
+                        _id: "1",
+                        fullName: { firstName: "Ahmad", lastName: "Ali" },
+                      }
+                    employee:
+                      {
+                        _id: "2",
+                        fullName: { firstName: "Layla", lastName: "Hassan" },
+                      }
+                    description: "تفصيل قميص"
+                    status: PENDING
+                    cost: 40
+                    sizes: ["M"]
+                    colors: ["red"]
+                    deliveryLocation: { address: "شارع ٥", city: "الرياض" }
+                    images: []
+                    employeeSignature: ""
+                    customerSignature: ""
+                    createdAt: "2026-03-06T23:23:00.000Z"
+                count: 22
+                page: 1
+                perPage: 10
+        "401":
+          description: Unauthorized
     post:
       tags: [Orders]
       summary: Create order with images and signatures
@@ -710,3 +796,4 @@ paths:
           content:
             application/json:
               schema:
+                $ref: "#/components/schemas/Error"

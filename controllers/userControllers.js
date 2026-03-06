@@ -14,15 +14,32 @@ const { Role } = require("../models/Role");
    Access: ADMIN ONLY
 ------------------------------------------------------------ */
 exports.getAllUsersCtrl = asyncHandler(async (req, res) => {
-  const { page = 1, perPage = 10 } = req.query;
+  const {
+    page = 1,
+    perPage = 10,
+    minSalary,
+    maxSalary,
+    orderByAlpha = 0,
+  } = req.query;
 
-  const users = await User.find({ isDeleted: false })
+  // بناء فلتر الراتب (لو تم تزويده)
+  const filter = { isDeleted: false };
+  if (minSalary) filter.salary = { ...filter.salary, $gte: Number(minSalary) };
+  if (maxSalary) filter.salary = { ...filter.salary, $lte: Number(maxSalary) };
+
+  // تحديد ترتيب الأحرف
+  let sortOption = { createdAt: -1 }; // الإفتراضي
+  if (orderByAlpha == 1)
+    sortOption = { "fullName.firstName": 1 }; // من A إلى Z
+  else if (orderByAlpha == 0) sortOption = { "fullName.firstName": -1 }; // من Z إلى A
+
+  const users = await User.find(filter)
     .populate("role")
     .skip((page - 1) * perPage)
-    .limit(perPage)
-    .sort({ createdAt: -1 });
+    .limit(Number(perPage))
+    .sort(sortOption);
 
-  const documentCount = await User.countDocuments({ isDeleted: false });
+  const documentCount = await User.countDocuments(filter);
 
   res.status(200).json({
     users,
@@ -108,7 +125,7 @@ exports.updateUserCtrl = asyncHandler(async (req, res) => {
   const user = await User.findByIdAndUpdate(
     req.params.id,
     { $set: req.body },
-    { new: true }
+    { new: true },
   ).populate("role");
 
   if (!user) return res.status(404).json({ message: "User not found" });

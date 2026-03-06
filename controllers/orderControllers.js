@@ -28,8 +28,7 @@
 // // });
 // module.exports.createOrderCtrl = asyncHandler(async (req, res) => {
 //   console.log(req.body);
-  
-  
+
 //   // 🔹 parse fields if they come as string
 //   if (req.body.sizes) req.body.sizes = JSON.parse(req.body.sizes);
 //   if (req.body.colors) req.body.colors = JSON.parse(req.body.colors);
@@ -66,25 +65,34 @@
 //   });
 // });
 
-
-
 const asyncHandler = require("express-async-handler");
-const { Order, validateCreateOrder, validateUpdateOrder, validateOrderId } = require("../models/Order");
+const {
+  Order,
+  validateCreateOrder,
+  validateUpdateOrder,
+  validateOrderId,
+} = require("../models/Order");
 
 const normalizeArray = (value) => {
-   if (!value) return [];
+  if (!value) return [];
 
   // إذا كانت Array مثل ['red,blue']
   if (Array.isArray(value)) {
     if (value.length === 1 && typeof value[0] === "string") {
-      return value[0].split(",").map(v => v.trim()).filter(Boolean);
+      return value[0]
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean);
     }
     return value;
   }
 
   // إذا كانت String مباشرة
   if (typeof value === "string") {
-    return value.split(",").map(v => v.trim()).filter(Boolean);
+    return value
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
   }
 
   return [];
@@ -95,18 +103,18 @@ const normalizeArray = (value) => {
  * @access  Private
  */
 const createOrderCtrl = asyncHandler(async (req, res) => {
+  req.body.sizes = normalizeArray(req.body.sizes);
+  req.body.colors = normalizeArray(req.body.colors);
+  req.body.images = normalizeArray(req.body.images);
 
-req.body.sizes = normalizeArray(req.body.sizes);
-req.body.colors = normalizeArray(req.body.colors);
-req.body.images = normalizeArray(req.body.images);
-
-if (req.body.deliveryLocation && typeof req.body.deliveryLocation === "string") {
+  if (
+    req.body.deliveryLocation &&
+    typeof req.body.deliveryLocation === "string"
+  ) {
     req.body.deliveryLocation = JSON.parse(req.body.deliveryLocation);
-}
+  }
 
-
-console.log(req.body);
-
+  console.log(req.body);
 
   // Validate body
   const { error } = validateCreateOrder(req.body);
@@ -115,14 +123,11 @@ console.log(req.body);
   }
 
   // Handle uploaded files
-  const images =
-    req.files?.images?.map((file) => file.filename) || [];
+  const images = req.files?.images?.map((file) => file.filename) || [];
 
-  const employeeSignature =
-    req.files?.employeeSignature?.[0]?.filename || null;
+  const employeeSignature = req.files?.employeeSignature?.[0]?.filename || null;
 
-  const customerSignature =
-    req.files?.customerSignature?.[0]?.filename || null;
+  const customerSignature = req.files?.customerSignature?.[0]?.filename || null;
 
   const order = await Order.create({
     ...req.body,
@@ -140,15 +145,46 @@ console.log(req.body);
  * @access  private
  ------------------------------------------------*/
 const getAllOrdersCtrl = asyncHandler(async (req, res) => {
-  const { page = 1, perPage = 10 } = req.query;
+  const {
+    page = 1,
+    perPage = 10,
+    status,
+    employeeId,
+    userId,
+    from,
+    to,
+  } = req.query;
 
-  const orders = await Order.find()
+  // بناء كائن الفلاتر بشكل ديناميكي
+  const filter = {};
+
+  if (status) {
+    filter.status = status;
+  }
+
+  if (employeeId) {
+    filter.employee = employeeId;
+  }
+
+  if (userId) {
+    filter.customer = userId;
+  }
+
+  if (from) {
+    filter.createdAt = { $gte: new Date(from) };
+
+    if (to) {
+      filter.createdAt.$lte = new Date(to);
+    }
+  }
+
+  const orders = await Order.find(filter)
     .populate("customer employee")
     .skip((page - 1) * perPage)
-    .limit(perPage)
+    .limit(Number(perPage))
     .sort({ createdAt: -1 });
 
-  const count = await Order.countDocuments();
+  const count = await Order.countDocuments(filter);
 
   res.status(200).json({
     orders,
@@ -157,7 +193,6 @@ const getAllOrdersCtrl = asyncHandler(async (req, res) => {
     perPage: Number(perPage),
   });
 });
-
 /**-----------------------------------------------
  * @desc    Get Order By ID
  * @route   GET /api/orders/:id
@@ -168,7 +203,7 @@ const getOrderByIdCtrl = asyncHandler(async (req, res) => {
   if (error) return res.status(400).json({ message: "Invalid order ID" });
 
   const order = await Order.findById(req.params.id).populate(
-    "customer employee"
+    "customer employee",
   );
 
   if (!order) return res.status(404).json({ message: "Order not found" });
@@ -197,7 +232,7 @@ const updateOrderCtrl = asyncHandler(async (req, res) => {
         employee: req.body.employee,
       },
     },
-    { new: true }
+    { new: true },
   ).populate("customer employee");
 
   if (!updatedOrder)
