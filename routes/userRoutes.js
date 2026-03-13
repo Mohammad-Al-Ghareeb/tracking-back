@@ -30,8 +30,8 @@ router.get("/brief", getAllBriefUsers);
 // /api/roles/:id
 router
   .route("/:id")
-  .get(verifyTokenAndAdmin, getUserByIdCtrl)
-  .put(verifyTokenAndAdmin, updateUserCtrl)
-  .delete(verifyTokenAndAdmin, deleteUserCtrl);
+  .get(getUserByIdCtrl)
+  .put(updateUserCtrl)
+  .delete(deleteUserCtrl);
 
 module.exports = router;

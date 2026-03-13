@@ -20,8 +20,8 @@ router.route("/").get(getAllRolesCtrl).post(createRoleCtrl);
 // /api/roles/:id
 router
   .route("/:id")
-  .get(verifyTokenAndAdmin, getRoleByIdCtrl)
-  .put(verifyTokenAndAdmin, updateRoleCtrl)
-  .delete(verifyTokenAndAdmin, deleteRoleCtrl);
+  .get(getRoleByIdCtrl)
+  .put(updateRoleCtrl)
+  .delete(deleteRoleCtrl);
 
 module.exports = router;
