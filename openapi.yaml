@@ -7,7 +7,7 @@ servers:
   - url: http://localhost:8000
     description: Local server
 
-  - url: https://tracking-back-1.onrender.com
+  - url: https://tracking-back-07ex.onrender.com
     description: Production server (Render)
 components:
   securitySchemes:
