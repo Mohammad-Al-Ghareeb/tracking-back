@@ -11,7 +11,6 @@ require("dotenv").config();
 connectToDb();
 const swaggerDocument = YAML.load(path.join(__dirname, "openapi.yaml"));
 
-
 // Init App
 const app = express();
 
@@ -23,7 +22,7 @@ app.use("/images", express.static(path.join(__dirname, "images")));
 app.use(
   cors({
     origin: "*",
-  })
+  }),
 );
 
 // socket.io
@@ -42,6 +41,6 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 8000;
 app.listen(PORT, () =>
   console.log(
-    `Server is running in ${process.env.NODE_ENV} mode on port ${PORT}`
-  )
+    `Server is running in ${process.env.NODE_ENV} mode on port ${PORT}`,
+  ),
 );
