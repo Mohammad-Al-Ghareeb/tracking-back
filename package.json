@@ -5,10 +5,12 @@
   "main": "app.js",
   "scripts": {
     "dev": "nodemon app",
-    "build": "node build",
     "start": "node app"
   },
   "author": "Abdulrahman",
+  "engines": {
+    "node": "22.20.0"
+  },
   "license": "ISC",
   "dependencies": {
     "axios": "^1.7.7",
