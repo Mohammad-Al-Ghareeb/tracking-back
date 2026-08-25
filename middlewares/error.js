@@ -1,21 +1,14 @@
-// Not Found Middleware
-const notFound = (req,res,next) => {
-    const error = new Error(`not found - ${req.originalUrl}`);
-    res.status(404);
-    next(error);
-}
+const notFound = (req, res, next) => {
+  res.status(404);
+  const error = new Error(req.t ? req.t("common.routeNotFound") : "Route not found");
+  error.statusCode = 404;
+  next(error);
+};
 
-// Error Handler Middleware
 const errorHandler = (err, req, res, next) => {
-    const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+  const statusCode = err.statusCode || (res.statusCode === 200 ? 500 : res.statusCode);
+  const message = statusCode >= 500 && process.env.NODE_ENV === "production" ? (req.t ? req.t("common.serverError") : "An unexpected server error occurred") : err.message;
+  res.status(statusCode).json({ message, stack: process.env.NODE_ENV === "production" ? null : err.stack });
+};
 
-    res.status(statusCode).json({
-        message: err.message,
-        stack: process.env.NODE_ENV === "production" ? null : err.stack,
-    });
-}
-
-module.exports = {
-    errorHandler,
-    notFound
-}
+module.exports = { errorHandler, notFound };

@@ -94,6 +94,8 @@ const validateRegisterAdmin = (obj) => {
     username: Joi.string().trim().required(),
     password: Joi.string().min(8).required(),
     role: Joi.string().hex().length(24).required(),
+    salary: Joi.number(),
+    isActive: Joi.boolean(),
   });
 
   return schema.validate(obj);

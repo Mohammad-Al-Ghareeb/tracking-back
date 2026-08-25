@@ -1,7 +1,8 @@
 const asyncHandler = require("express-async-handler");
 const bcrypt = require("bcryptjs");
-const { User, validateRegisterUser, validateUpdateUser } = require("../models/User");
+const { User, validateRegisterAdmin, validateUpdateUser } = require("../models/User");
 const { Role } = require("../models/Role");
+const { localizeJoiError } = require("../utils/localization");
 
 const isAdmin = (req) => ["admin", "superadmin", "أدمن"].includes(String(req.user?.role?.name || "").trim().toLowerCase());
 
@@ -14,7 +15,6 @@ exports.getAllUsersCtrl = asyncHandler(async (req, res) => {
   let sortOption = { createdAt: -1 };
   if (orderByAlpha === "1") sortOption = { "fullName.firstName": 1 };
   if (orderByAlpha === "0") sortOption = { "fullName.firstName": -1 };
-
   const users = await User.find(filter).populate("role").skip((Number(page) - 1) * Number(perPage)).limit(Number(perPage)).sort(sortOption);
   const documentCount = await User.countDocuments(filter);
   res.status(200).json({ users, pagination: { page: Number(page), perPage: Number(perPage), count: users.length, documentCount } });
@@ -22,17 +22,17 @@ exports.getAllUsersCtrl = asyncHandler(async (req, res) => {
 
 exports.getUserByIdCtrl = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id).populate("role");
-  if (!user || user.isDeleted) return res.status(404).json({ message: "User not found" });
+  if (!user || user.isDeleted) return res.status(404).json({ message: req.t("auth.userNotFound") });
   res.status(200).json(user);
 });
 
 exports.createUserCtrl = asyncHandler(async (req, res) => {
-  const { error } = validateRegisterUser(req.body);
-  if (error) return res.status(400).json({ message: error.details[0].message });
+  const { error } = validateRegisterAdmin(req.body);
+  if (error) return res.status(400).json({ message: localizeJoiError(req, error) });
   const { email, username, password, role } = req.body;
-  if (await User.findOne({ email })) return res.status(400).json({ message: "Email already exists" });
-  if (await User.findOne({ username })) return res.status(400).json({ message: "Username already exists" });
-  if (!(await Role.findById(role))) return res.status(400).json({ message: "Invalid role ID" });
+  if (await User.findOne({ email })) return res.status(400).json({ message: req.t("auth.emailExists") });
+  if (await User.findOne({ username })) return res.status(400).json({ message: req.t("users.usernameExists") });
+  if (!(await Role.findById(role))) return res.status(400).json({ message: req.t("users.invalidRole") });
   const user = await User.create({ ...req.body, password: await bcrypt.hash(password, 10) });
   await user.populate("role");
   res.status(201).json(user);
@@ -40,36 +40,23 @@ exports.createUserCtrl = asyncHandler(async (req, res) => {
 
 exports.updateUserCtrl = asyncHandler(async (req, res) => {
   const { error } = validateUpdateUser(req.body);
-  if (error) return res.status(400).json({ message: error.details[0].message });
-  if (!isAdmin(req) && req.user.id !== req.params.id) return res.status(403).json({ message: "Not allowed to update this user" });
-  if (!isAdmin(req)) {
-    delete req.body.role;
-    delete req.body.salary;
-    delete req.body.isActive;
-    delete req.body.isDeleted;
-  }
-  if (req.body.email) {
-    const duplicateEmail = await User.findOne({ email: req.body.email, _id: { $ne: req.params.id } });
-    if (duplicateEmail) return res.status(400).json({ message: "Email already exists" });
-  }
-  if (req.body.username) {
-    const duplicateUsername = await User.findOne({ username: req.body.username, _id: { $ne: req.params.id } });
-    if (duplicateUsername) return res.status(400).json({ message: "Username already exists" });
-  }
-  if (req.body.role && !(await Role.findById(req.body.role))) return res.status(400).json({ message: "Invalid role ID" });
+  if (error) return res.status(400).json({ message: localizeJoiError(req, error) });
+  if (!isAdmin(req) && req.user.id !== req.params.id) return res.status(403).json({ message: req.t("users.updateForbidden") });
+  if (!isAdmin(req)) { delete req.body.role; delete req.body.salary; delete req.body.isActive; delete req.body.isDeleted; }
+  if (req.body.email) { const duplicateEmail = await User.findOne({ email: req.body.email, _id: { $ne: req.params.id } }); if (duplicateEmail) return res.status(400).json({ message: req.t("auth.emailExists") }); }
+  if (req.body.username) { const duplicateUsername = await User.findOne({ username: req.body.username, _id: { $ne: req.params.id } }); if (duplicateUsername) return res.status(400).json({ message: req.t("users.usernameExists") }); }
+  if (req.body.role && !(await Role.findById(req.body.role))) return res.status(400).json({ message: req.t("users.invalidRole") });
   if (req.body.password) req.body.password = await bcrypt.hash(req.body.password, 10);
   const user = await User.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true, runValidators: true }).populate("role");
-  if (!user) return res.status(404).json({ message: "User not found" });
+  if (!user) return res.status(404).json({ message: req.t("auth.userNotFound") });
   res.status(200).json(user);
 });
 
 exports.deleteUserCtrl = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
-  if (!user) return res.status(404).json({ message: "User not found" });
-  user.isDeleted = true;
-  user.isActive = false;
-  await user.save();
-  res.status(200).json({ message: "User deleted successfully" });
+  if (!user) return res.status(404).json({ message: req.t("auth.userNotFound") });
+  user.isDeleted = true; user.isActive = false; await user.save();
+  res.status(200).json({ message: req.t("users.deleted") });
 });
 
 exports.getAllBriefUsers = asyncHandler(async (req, res) => {

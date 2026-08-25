@@ -1,36 +1,8 @@
 const asyncHandler = require("express-async-handler");
 const { Expense, validateCreateExpense, validateUpdateExpense } = require("../models/Expense");
+const { localizeJoiError } = require("../utils/localization");
 
-exports.getExpensesCtrl = asyncHandler(async (req, res) => {
-  const { page = 1, perPage = 20, month, category } = req.query;
-  const filter = {};
-  if (category) filter.category = category;
-  if (month && /^\d{4}-\d{2}$/.test(month)) {
-    const [year, monthNumber] = month.split("-").map(Number);
-    filter.date = { $gte: new Date(Date.UTC(year, monthNumber - 1, 1)), $lt: new Date(Date.UTC(year, monthNumber, 1)) };
-  }
-  const items = await Expense.find(filter).populate("createdBy").sort({ date: -1 }).skip((Number(page) - 1) * Number(perPage)).limit(Number(perPage));
-  const documentCount = await Expense.countDocuments(filter);
-  res.status(200).json({ items, pagination: { page: Number(page), perPage: Number(perPage), count: items.length, documentCount } });
-});
-
-exports.createExpenseCtrl = asyncHandler(async (req, res) => {
-  const { error } = validateCreateExpense(req.body);
-  if (error) return res.status(400).json({ message: error.details[0].message });
-  const item = await Expense.create({ ...req.body, createdBy: req.user.id });
-  res.status(201).json(item);
-});
-
-exports.updateExpenseCtrl = asyncHandler(async (req, res) => {
-  const { error } = validateUpdateExpense(req.body);
-  if (error) return res.status(400).json({ message: error.details[0].message });
-  const item = await Expense.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true, runValidators: true });
-  if (!item) return res.status(404).json({ message: "Expense not found" });
-  res.status(200).json(item);
-});
-
-exports.deleteExpenseCtrl = asyncHandler(async (req, res) => {
-  const item = await Expense.findByIdAndDelete(req.params.id);
-  if (!item) return res.status(404).json({ message: "Expense not found" });
-  res.status(200).json({ message: "Expense deleted successfully" });
-});
+exports.getExpensesCtrl = asyncHandler(async (req, res) => { const { page = 1, perPage = 20, month, category } = req.query; const filter = {}; if (category) filter.category = category; if (month && /^\d{4}-\d{2}$/.test(month)) { const [year, monthNumber] = month.split("-").map(Number); filter.date = { $gte: new Date(Date.UTC(year, monthNumber - 1, 1)), $lt: new Date(Date.UTC(year, monthNumber, 1)) }; } const items = await Expense.find(filter).populate("createdBy").sort({ date: -1 }).skip((Number(page) - 1) * Number(perPage)).limit(Number(perPage)); const documentCount = await Expense.countDocuments(filter); res.status(200).json({ items, pagination: { page: Number(page), perPage: Number(perPage), count: items.length, documentCount } }); });
+exports.createExpenseCtrl = asyncHandler(async (req, res) => { const { error } = validateCreateExpense(req.body); if (error) return res.status(400).json({ message: localizeJoiError(req, error) }); const item = await Expense.create({ ...req.body, createdBy: req.user.id }); res.status(201).json(item); });
+exports.updateExpenseCtrl = asyncHandler(async (req, res) => { const { error } = validateUpdateExpense(req.body); if (error) return res.status(400).json({ message: localizeJoiError(req, error) }); const item = await Expense.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true, runValidators: true }); if (!item) return res.status(404).json({ message: req.t("expenses.notFound") }); res.status(200).json(item); });
+exports.deleteExpenseCtrl = asyncHandler(async (req, res) => { const item = await Expense.findByIdAndDelete(req.params.id); if (!item) return res.status(404).json({ message: req.t("expenses.notFound") }); res.status(200).json({ message: req.t("expenses.deleted") }); });
