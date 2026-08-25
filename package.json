@@ -5,7 +5,8 @@
   "main": "app.js",
   "scripts": {
     "dev": "nodemon app",
-    "start": "node app"
+    "start": "node app",
+    "migrate:orders": "node scripts/migrate-order-data.js"
   },
   "author": "Abdulrahman",
   "engines": {

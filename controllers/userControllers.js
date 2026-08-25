@@ -48,6 +48,14 @@ exports.updateUserCtrl = asyncHandler(async (req, res) => {
     delete req.body.isActive;
     delete req.body.isDeleted;
   }
+  if (req.body.email) {
+    const duplicateEmail = await User.findOne({ email: req.body.email, _id: { $ne: req.params.id } });
+    if (duplicateEmail) return res.status(400).json({ message: "Email already exists" });
+  }
+  if (req.body.username) {
+    const duplicateUsername = await User.findOne({ username: req.body.username, _id: { $ne: req.params.id } });
+    if (duplicateUsername) return res.status(400).json({ message: "Username already exists" });
+  }
   if (req.body.role && !(await Role.findById(req.body.role))) return res.status(400).json({ message: "Invalid role ID" });
   if (req.body.password) req.body.password = await bcrypt.hash(req.body.password, 10);
   const user = await User.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true, runValidators: true }).populate("role");

@@ -1,6 +1,7 @@
 const asyncHandler = require("express-async-handler");
 const { Order, NEXT_STATUS, validateCreateOrder, validateCustomerOrder, validateUpdateOrder, validateOrderId } = require("../models/Order");
 const { RawMaterial } = require("../models/RawMaterial");
+const { User } = require("../models/User");
 
 const populateOrder = (query) => query.populate("customer employee rawMaterials.rawMaterial");
 
@@ -127,6 +128,14 @@ exports.assignOrderCtrl = asyncHandler(async (req, res) => {
   if (!employee || !expectedFinishDate) return res.status(400).json({ message: "Employee and expected finish date are required" });
   const order = await Order.findById(req.params.id);
   if (!order) return res.status(404).json({ message: "Order not found" });
+  const assignedEmployee = await User.findById(employee).populate("role");
+  if (!assignedEmployee || assignedEmployee.isDeleted || !assignedEmployee.isActive) {
+    return res.status(400).json({ message: "Selected employee is unavailable" });
+  }
+  const employeeRole = String(assignedEmployee.role?.name || "").trim().toLowerCase();
+  if (!["employee", "worker", "موظف", "عامل"].includes(employeeRole)) {
+    return res.status(400).json({ message: "Selected user is not an employee" });
+  }
   order.employee = employee;
   order.expectedFinishDate = expectedFinishDate;
   order.additionalCost = Math.max(0, Number(additionalCost) || 0);

@@ -15,14 +15,17 @@ exports.registerUser = asyncHandler(async (req, res) => {
   if (await User.findOne({ email })) return res.status(400).json({ message: "Email already exists" });
   if (await User.findOne({ username })) return res.status(400).json({ message: "Username already exists" });
 
-  const roleExists = await Role.findById(role);
-  if (!roleExists) return res.status(400).json({ message: "Invalid role ID" });
+  let roleExists = await Role.findById(role);
+  if (!roleExists) {
+    roleExists = await Role.findOne({ name: { $in: ["user", "customer", "مستخدم", "زبون"] } });
+  }
+  if (!roleExists) return res.status(400).json({ message: "Customer role is not configured" });
   const publicRoleName = String(roleExists.name || "").trim().toLowerCase();
   if (!["user", "customer", "مستخدم", "زبون"].includes(publicRoleName)) {
     return res.status(403).json({ message: "Public registration is only available for customers" });
   }
 
-  const user = await User.create({ ...req.body, password: await bcrypt.hash(password, 10) });
+  const user = await User.create({ ...req.body, role: roleExists._id, password: await bcrypt.hash(password, 10) });
   await user.populate("role");
   res.status(201).json({ message: "User registered successfully", user, token: generateToken(user) });
 });
