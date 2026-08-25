@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const Joi = require("joi");
-const jwt = require("jsonwebtoken");
+const { generateAccessToken } = require("../utils/authTokens");
 
 const UserSchema = new mongoose.Schema(
   {
@@ -37,7 +37,8 @@ const UserSchema = new mongoose.Schema(
     },
     salary: {
       type: Number,
-      trim: true,
+      min: 0,
+      default: 0,
     },
     isActive: {
       type: Boolean,
@@ -56,10 +57,7 @@ const UserSchema = new mongoose.Schema(
 );
 
 UserSchema.methods.generateAuthToken = function () {
-  return jwt.sign(
-    { id: this._id, role: this.role, username: this.username },
-    process.env.JWT_SECRET_KEY
-  );
+  return generateAccessToken(this);
 };
 
 const User = mongoose.model("User", UserSchema);
@@ -94,7 +92,7 @@ const validateRegisterAdmin = (obj) => {
     username: Joi.string().trim().required(),
     password: Joi.string().min(8).required(),
     role: Joi.string().hex().length(24).required(),
-    salary: Joi.number(),
+    salary: Joi.number().min(0),
     isActive: Joi.boolean(),
   });
 
@@ -120,7 +118,7 @@ const validateUpdateUser = (obj) => {
     username: Joi.string().trim(),
     password: Joi.string().min(8),
     role: Joi.string().hex().length(24),
-    salary: Joi.number(),
+    salary: Joi.number().min(0),
     isActive: Joi.boolean(),
   });
 

@@ -1,11 +1,23 @@
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 const asyncHandler = require("express-async-handler");
 const { User, validateRegisterUser, validateLoginUser } = require("../models/User");
 const { Role } = require("../models/Role");
 const { localizeJoiError } = require("../utils/localization");
+const { generateTokenPair, verifyRefreshToken } = require("../utils/authTokens");
 
-const generateToken = (user) => jwt.sign({ id: user._id, username: user.username }, process.env.JWT_SECRET_KEY, { expiresIn: "30d" });
+function buildAuthTokenPayload(user) {
+  const tokens = generateTokenPair(user);
+  return {
+    ...tokens,
+    // Backward-compatible alias for older frontend code while it migrates to accessToken.
+    token: tokens.accessToken,
+  };
+}
+
+function disableAuthResponseCaching(res) {
+  res.set("Cache-Control", "no-store");
+  res.set("Pragma", "no-cache");
+}
 const CUSTOMER_ROLE_NAMES = ["user", "customer", "مستخدم", "زبون"];
 
 async function generateUniqueUsername(email) {
@@ -27,7 +39,8 @@ exports.registerUser = asyncHandler(async (req, res) => {
   const username = await generateUniqueUsername(normalizedEmail);
   const user = await User.create({ fullName: req.body.fullName, email: normalizedEmail, username, role: roleExists._id, password: await bcrypt.hash(password, 10) });
   await user.populate("role");
-  res.status(201).json({ message: req.t("auth.registerSuccess"), user, token: generateToken(user) });
+  disableAuthResponseCaching(res);
+  res.status(201).json({ message: req.t("auth.registerSuccess"), user, ...buildAuthTokenPayload(user) });
 });
 
 exports.loginUser = asyncHandler(async (req, res) => {
@@ -37,7 +50,34 @@ exports.loginUser = asyncHandler(async (req, res) => {
   if (!user || !(await bcrypt.compare(req.body.password, user.password))) return res.status(400).json({ message: req.t("auth.invalidCredentials") });
   if (user.isDeleted || !user.isActive) return res.status(403).json({ message: req.t("auth.inactive") });
   const safeUser = await User.findById(user._id).populate("role");
-  res.status(200).json({ message: req.t("auth.loginSuccess"), user: safeUser, token: generateToken(user) });
+  disableAuthResponseCaching(res);
+  res.status(200).json({ message: req.t("auth.loginSuccess"), user: safeUser, ...buildAuthTokenPayload(user) });
+});
+
+exports.refreshToken = asyncHandler(async (req, res) => {
+  const refreshToken = req.body?.refreshToken;
+  if (typeof refreshToken !== "string" || !refreshToken.trim()) {
+    return res.status(400).json({ message: req.t("auth.refreshRequired") });
+  }
+
+  let payload;
+  try {
+    payload = verifyRefreshToken(refreshToken.trim());
+  } catch {
+    return res.status(401).json({ message: req.t("auth.refreshInvalid") });
+  }
+
+  const user = await User.findById(payload.id).populate("role");
+  if (!user || user.isDeleted || !user.isActive) {
+    return res.status(401).json({ message: req.t("auth.unavailable") });
+  }
+
+  disableAuthResponseCaching(res);
+  res.status(200).json({
+    message: req.t("auth.refreshSuccess"),
+    user,
+    ...buildAuthTokenPayload(user),
+  });
 });
 
 exports.getMe = asyncHandler(async (req, res) => {

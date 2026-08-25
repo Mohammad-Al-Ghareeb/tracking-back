@@ -4,6 +4,8 @@ const {
   createMyOrderCtrl,
   getMyOrdersCtrl,
   getMyOrderByIdCtrl,
+  getAssignedOrdersCtrl,
+  getAssignedOrderByIdCtrl,
   getAllOrdersCtrl,
   getOrderByIdCtrl,
   updateOrderCtrl,
@@ -11,12 +13,14 @@ const {
   updateOrderStatusCtrl,
   deleteOrderCtrl,
 } = require("../controllers/orderControllers");
-const { verifyToken, verifyTokenAndAdmin } = require("../middlewares/verifyToken");
+const { verifyToken, verifyTokenAndAdmin, verifyTokenAndEmployee } = require("../middlewares/verifyToken");
 
 const router = express.Router();
 
 router.route("/my").get(verifyToken, getMyOrdersCtrl).post(verifyToken, createMyOrderCtrl);
 router.get("/my/:id", verifyToken, getMyOrderByIdCtrl);
+router.get("/assigned", verifyTokenAndEmployee, getAssignedOrdersCtrl);
+router.get("/assigned/:id", verifyTokenAndEmployee, getAssignedOrderByIdCtrl);
 router.route("/").post(verifyTokenAndAdmin, createOrderCtrl).get(verifyTokenAndAdmin, getAllOrdersCtrl);
 router.patch("/:id/assignment", verifyTokenAndAdmin, assignOrderCtrl);
 router.patch("/:id/status", verifyTokenAndAdmin, updateOrderStatusCtrl);
