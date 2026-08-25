@@ -7,25 +7,50 @@ const { Role } = require("../models/Role");
 const generateToken = (user) =>
   jwt.sign({ id: user._id, username: user.username }, process.env.JWT_SECRET_KEY, { expiresIn: "30d" });
 
+const CUSTOMER_ROLE_NAMES = ["user", "customer", "مستخدم", "زبون"];
+
+async function generateUniqueUsername(email) {
+  const base =
+    String(email)
+      .trim()
+      .toLowerCase()
+      .split("@")[0]
+      .replace(/[^a-z0-9._-]/g, "") || "customer";
+  let candidate = base;
+  let suffix = 1;
+
+  while (await User.exists({ username: candidate })) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
+}
+
 exports.registerUser = asyncHandler(async (req, res) => {
   const { error } = validateRegisterUser(req.body);
   if (error) return res.status(400).json({ message: error.details[0].message });
 
-  const { email, username, password, role } = req.body;
-  if (await User.findOne({ email })) return res.status(400).json({ message: "Email already exists" });
-  if (await User.findOne({ username })) return res.status(400).json({ message: "Username already exists" });
+  const normalizedEmail = req.body.email.trim().toLowerCase();
+  const { password } = req.body;
 
-  let roleExists = await Role.findById(role);
+  if (await User.findOne({ email: normalizedEmail })) {
+    return res.status(400).json({ message: "Email already exists" });
+  }
+
+  const roleExists = await Role.findOne({ name: { $in: CUSTOMER_ROLE_NAMES } });
   if (!roleExists) {
-    roleExists = await Role.findOne({ name: { $in: ["user", "customer", "مستخدم", "زبون"] } });
-  }
-  if (!roleExists) return res.status(400).json({ message: "Customer role is not configured" });
-  const publicRoleName = String(roleExists.name || "").trim().toLowerCase();
-  if (!["user", "customer", "مستخدم", "زبون"].includes(publicRoleName)) {
-    return res.status(403).json({ message: "Public registration is only available for customers" });
+    return res.status(400).json({ message: "Customer role is not configured" });
   }
 
-  const user = await User.create({ ...req.body, role: roleExists._id, password: await bcrypt.hash(password, 10) });
+  const username = await generateUniqueUsername(normalizedEmail);
+  const user = await User.create({
+    fullName: req.body.fullName,
+    email: normalizedEmail,
+    username,
+    role: roleExists._id,
+    password: await bcrypt.hash(password, 10),
+  });
   await user.populate("role");
   res.status(201).json({ message: "User registered successfully", user, token: generateToken(user) });
 });

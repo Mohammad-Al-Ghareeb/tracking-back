@@ -2,8 +2,6 @@ const mongoose = require("mongoose");
 const Joi = require("joi");
 const jwt = require("jsonwebtoken");
 
-//schema of user
-
 const UserSchema = new mongoose.Schema(
   {
     fullName: {
@@ -32,16 +30,11 @@ const UserSchema = new mongoose.Schema(
       required: true,
       select: false,
     },
-    // role: {
-    //   enum: ["ADMIN", "MANAGER", "OPERATOR", "CUSTOMER"],
-    //   type: String,
-    // },
     role: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Role",
       required: true,
     },
-
     salary: {
       type: Number,
       trim: true,
@@ -74,17 +67,18 @@ const User = mongoose.model("User", UserSchema);
 const validateRegisterUser = (obj) => {
   const schema = Joi.object({
     fullName: Joi.object({
-      firstName: Joi.string().required(),
-      lastName: Joi.string().required(),
+      firstName: Joi.string().trim().required(),
+      lastName: Joi.string().trim().required(),
     }).required(),
-
-    email: Joi.string().trim().min(2).max(100).required(),
-    username: Joi.string().trim().required(),
-    password: Joi.string().trim().min(8).required(),
-
-    role: Joi.string().hex().length(24).required(),
-    salary: Joi.number(),
-    isActive: Joi.boolean(),
+    email: Joi.string().trim().email().min(2).max(100).required(),
+    password: Joi.string().min(8).required(),
+    confirmPassword: Joi.string()
+      .min(8)
+      .valid(Joi.ref("password"))
+      .required()
+      .messages({
+        "any.only": "Password confirmation does not match password",
+      }),
   });
 
   return schema.validate(obj);
@@ -96,12 +90,10 @@ const validateRegisterAdmin = (obj) => {
       firstName: Joi.string().required(),
       lastName: Joi.string().required(),
     }).required(),
-
     email: Joi.string().trim().min(2).max(100).required(),
     username: Joi.string().trim().required(),
-    password: Joi.string().trim().min(8).required(),
-
-    role: Joi.string().hex().length(24).required(), // dynamic
+    password: Joi.string().min(8).required(),
+    role: Joi.string().hex().length(24).required(),
   });
 
   return schema.validate(obj);
@@ -110,7 +102,7 @@ const validateRegisterAdmin = (obj) => {
 const validateLoginUser = (obj) => {
   const schema = Joi.object({
     email: Joi.string().trim().min(2).max(100).required(),
-    password: Joi.string().trim().min(8).required(),
+    password: Joi.string().min(8).required(),
   });
 
   return schema.validate(obj);
@@ -124,8 +116,7 @@ const validateUpdateUser = (obj) => {
     }),
     email: Joi.string().trim().min(2).max(100),
     username: Joi.string().trim(),
-    password: Joi.string().trim().min(8),
-
+    password: Joi.string().min(8),
     role: Joi.string().hex().length(24),
     salary: Joi.number(),
     isActive: Joi.boolean(),
