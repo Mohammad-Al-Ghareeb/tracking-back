@@ -32,6 +32,7 @@ app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/users", require("./routes/userRoutes"));
 app.use("/api/orders", require("./routes/orderRoutes"));
 app.use("/api/roles", require("./routes/roleRoutes"));
+app.use("/api/raw-materials", require("./routes/rawMaterialRoutes"));
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.use(notFound);
