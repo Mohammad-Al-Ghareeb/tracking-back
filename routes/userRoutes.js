@@ -2,36 +2,29 @@ const express = require("express");
 const router = express.Router();
 
 const {
-  getAllRolesCtrl,
-  getRoleByIdCtrl,
-  createRoleCtrl,
-  updateRoleCtrl,
-  deleteRoleCtrl,
-} = require("../controllers/roleControllers");
-
-const {
-  verifyToken,
-  verifyTokenAndAdmin,
-} = require("../middlewares/verifyToken");
-const {
   getAllUsersCtrl,
   getUserByIdCtrl,
+  createUserCtrl,
   updateUserCtrl,
   deleteUserCtrl,
   getAllBriefUsers,
 } = require("../controllers/userControllers");
+const {
+  verifyTokenAndAdmin,
+  verifyTokenAndAuthorization,
+} = require("../middlewares/verifyToken");
 
-// /api/roles
-router.route("/").get(getAllUsersCtrl);
-// .post(verifyTokenAndAdmin, createRoleCtrl);
+router
+  .route("/")
+  .get(verifyTokenAndAdmin, getAllUsersCtrl)
+  .post(verifyTokenAndAdmin, createUserCtrl);
 
-router.get("/brief", getAllBriefUsers);
+router.get("/brief", verifyTokenAndAdmin, getAllBriefUsers);
 
-// /api/roles/:id
 router
   .route("/:id")
-  .get(getUserByIdCtrl)
-  .put(updateUserCtrl)
-  .delete(deleteUserCtrl);
+  .get(verifyTokenAndAuthorization, getUserByIdCtrl)
+  .put(verifyTokenAndAuthorization, updateUserCtrl)
+  .delete(verifyTokenAndAdmin, deleteUserCtrl);
 
 module.exports = router;

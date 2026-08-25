@@ -1,81 +1,86 @@
 const jwt = require("jsonwebtoken");
 const { User } = require("../models/User");
 
-// Verify Token
+const ADMIN_ROLE_NAMES = new Set(["admin", "superadmin", "أدمن"]);
+
+const getBearerToken = (req) => {
+  const authorization = req.headers.authorization;
+  if (!authorization?.startsWith("Bearer ")) return null;
+  return authorization.slice(7).trim();
+};
+
+const authenticate = async (req) => {
+  const token = getBearerToken(req);
+  if (!token) {
+    const error = new Error("no token provided, access denied");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  let payload;
+  try {
+    payload = jwt.verify(token, process.env.JWT_SECRET_KEY);
+  } catch {
+    const error = new Error("invalid token, access denied");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const user = await User.findById(payload.id).populate("role");
+  if (!user || user.isDeleted || !user.isActive) {
+    const error = new Error("account is inactive or unavailable");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  req.user = {
+    id: user._id.toString(),
+    username: user.username,
+    role: user.role,
+  };
+};
+
+const sendAuthError = (res, error) =>
+  res.status(error.statusCode || 401).json({ message: error.message });
+
 function verifyToken(req, res, next) {
-  const authToken = req.headers.authorization;
-  if (authToken) {
-    const token = authToken.split(" ")[1];
-    try {
-      const decodedPayload = jwt.verify(token, process.env.JWT_SECRET_KEY);
-
-      req.user = decodedPayload;
-      next();
-    } catch (error) {
-      return res.status(401).json({ message: "invalid token, access denied" });
-    }
-  } else {
-    return res
-      .status(401)
-      .json({ message: "no token provided, access denied" });
-  }
+  authenticate(req).then(next).catch((error) => sendAuthError(res, error));
 }
 
-// Verify Token Object
-function verifyTokenObject(req, res, next) {
-  const ObjectToken = req.headers.authorizationObject;
-  if (ObjectToken) {
-    const token = ObjectToken.split(" ")[1];
-    try {
-      const decodedPayload = jwt.verify(token, process.env.JWT_SECRET);
-
-      req.object = decodedPayload;
-      next();
-    } catch (error) {
-      return res.status(401).json({ message: "invalid token, access denied" });
-    }
-  } else {
-    return res
-      .status(401)
-      .json({ message: "no token provided, access denied" });
-  }
-}
-
-// Verify Token & Admin
 function verifyTokenAndAdmin(req, res, next) {
-  verifyToken(req, res, () => {
-    if (req.user.role.name === "superAdmin" || req.user.role.name === "admin") {
+  authenticate(req)
+    .then(() => {
+      const roleName = String(req.user.role?.name || "").trim().toLowerCase();
+      if (!ADMIN_ROLE_NAMES.has(roleName)) {
+        return res.status(403).json({ message: "not allowed, only admin" });
+      }
       next();
-    } else {
-      return res.status(403).json({ message: "not allowed, only admin" });
-    }
-  });
+    })
+    .catch((error) => sendAuthError(res, error));
 }
 
-// Verify Token & Only User Himself
 function verifyTokenAndOnlyUser(req, res, next) {
-  verifyToken(req, res, () => {
-    if (req.user.id === req.params.id) {
+  authenticate(req)
+    .then(() => {
+      if (req.user.id !== req.params.id) {
+        return res.status(403).json({ message: "not allowed, only user himself" });
+      }
       next();
-    } else {
-      return res
-        .status(403)
-        .json({ message: "not allowed, only user himself" });
-    }
-  });
+    })
+    .catch((error) => sendAuthError(res, error));
 }
 
-// Verify Token & Authorization
 function verifyTokenAndAuthorization(req, res, next) {
-  verifyToken(req, res, () => {
-    if (req.user.id === req.params.id || req.user.role === "superAdmin") {
+  authenticate(req)
+    .then(() => {
+      const roleName = String(req.user.role?.name || "").trim().toLowerCase();
+      const isAdmin = ADMIN_ROLE_NAMES.has(roleName);
+      if (req.user.id !== req.params.id && !isAdmin) {
+        return res.status(403).json({ message: "not allowed, only user himself or admin" });
+      }
       next();
-    } else {
-      return res
-        .status(403)
-        .json({ message: "not allowed, only user himself or admin" });
-    }
-  });
+    })
+    .catch((error) => sendAuthError(res, error));
 }
 
 module.exports = {
