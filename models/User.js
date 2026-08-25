@@ -111,10 +111,10 @@ const validateLoginUser = (obj) => {
 const validateUpdateUser = (obj) => {
   const schema = Joi.object({
     fullName: Joi.object({
-      firstName: Joi.string(),
-      lastName: Joi.string(),
+      firstName: Joi.string().trim(),
+      lastName: Joi.string().trim(),
     }),
-    email: Joi.string().trim().min(2).max(100),
+    email: Joi.string().trim().email().min(2).max(100),
     username: Joi.string().trim(),
     password: Joi.string().min(8),
     role: Joi.string().hex().length(24),
