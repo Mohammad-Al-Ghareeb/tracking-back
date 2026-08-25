@@ -5,13 +5,21 @@ const { Role } = require("../models/Role");
 const { localizeJoiError } = require("../utils/localization");
 
 const isAdmin = (req) => ["admin", "superadmin", "أدمن"].includes(String(req.user?.role?.name || "").trim().toLowerCase());
+const ROLE_GROUP_NAMES = {
+  employee: ["employee", "worker", "موظف", "عامل"],
+  customer: ["customer", "user", "مستخدم", "زبون"],
+};
 
 exports.getAllUsersCtrl = asyncHandler(async (req, res) => {
-  const { page = 1, perPage = 10, minSalary, maxSalary, orderByAlpha, role } = req.query;
+  const { page = 1, perPage = 10, minSalary, maxSalary, orderByAlpha, role, roleGroup } = req.query;
   const filter = { isDeleted: false };
   if (minSalary) filter.salary = { ...filter.salary, $gte: Number(minSalary) };
   if (maxSalary) filter.salary = { ...filter.salary, $lte: Number(maxSalary) };
   if (role) filter.role = role;
+  if (!role && ROLE_GROUP_NAMES[roleGroup]) {
+    const roleIds = await Role.find({ name: { $in: ROLE_GROUP_NAMES[roleGroup] } }).distinct("_id");
+    filter.role = { $in: roleIds };
+  }
   let sortOption = { createdAt: -1 };
   if (orderByAlpha === "1") sortOption = { "fullName.firstName": 1 };
   if (orderByAlpha === "0") sortOption = { "fullName.firstName": -1 };
