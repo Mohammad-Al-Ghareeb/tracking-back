@@ -21,8 +21,8 @@ exports.getAllUsersCtrl = asyncHandler(async (req, res) => {
     filter.role = { $in: roleIds };
   }
   let sortOption = { createdAt: -1 };
-  if (orderByAlpha === "1") sortOption = { "fullName.firstName": 1 };
-  if (orderByAlpha === "0") sortOption = { "fullName.firstName": -1 };
+  if (["asc", "1"].includes(orderByAlpha)) sortOption = { "fullName.firstName": 1, "fullName.lastName": 1 };
+  if (["desc", "0"].includes(orderByAlpha)) sortOption = { "fullName.firstName": -1, "fullName.lastName": -1 };
   const users = await User.find(filter).populate("role").skip((Number(page) - 1) * Number(perPage)).limit(Number(perPage)).sort(sortOption);
   const documentCount = await User.countDocuments(filter);
   res.status(200).json({ users, pagination: { page: Number(page), perPage: Number(perPage), count: users.length, documentCount } });
@@ -68,6 +68,6 @@ exports.deleteUserCtrl = asyncHandler(async (req, res) => {
 });
 
 exports.getAllBriefUsers = asyncHandler(async (req, res) => {
-  const users = await User.find({ isDeleted: false }, { _id: 1, "fullName.firstName": 1, "fullName.lastName": 1, role: 1 }).populate("role");
+  const users = await User.find({ isDeleted: false }, { _id: 1, "fullName.firstName": 1, "fullName.lastName": 1, role: 1 }).sort({ "fullName.firstName": 1, "fullName.lastName": 1 }).populate("role");
   res.status(200).json({ users: users.map((u) => ({ _id: u._id, name: `${u.fullName.firstName} ${u.fullName.lastName}`, role: u.role })) });
 });

@@ -16,11 +16,28 @@ const OrderMaterialSchema = new mongoose.Schema(
     rawMaterial: { type: mongoose.Schema.Types.ObjectId, ref: "RawMaterial", required: true },
     nameSnapshot: { type: String, required: true },
     colorSnapshot: { type: String, default: "" },
-    quantity: { type: Number, min: 0.0001, required: true },
+    quantity: {
+      type: Number,
+      min: 1,
+      required: true,
+      validate: { validator: Number.isInteger, message: "Quantity must be an integer" },
+    },
     unitPriceSnapshot: { type: Number, min: 0, required: true },
     subtotal: { type: Number, min: 0, required: true },
   },
   { _id: false }
+);
+
+const StageCompletionRequestSchema = new mongoose.Schema(
+  {
+    stage: { type: String, enum: ORDER_STATUSES, required: true },
+    employee: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    status: { type: String, enum: ["PENDING", "APPROVED", "REJECTED"], default: "PENDING", required: true },
+    requestedAt: { type: Date, default: Date.now, required: true },
+    reviewedAt: Date,
+    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  },
+  { _id: true }
 );
 
 const OrderSchema = new mongoose.Schema(
@@ -41,6 +58,7 @@ const OrderSchema = new mongoose.Schema(
     cancelReason: String,
     deliveredAt: Date,
     inventoryConsumed: { type: Boolean, default: false },
+    stageCompletionRequests: { type: [StageCompletionRequestSchema], default: [] },
   },
   { timestamps: true }
 );
@@ -65,7 +83,7 @@ const validateCustomerOrder = (obj) =>
     description: Joi.string().trim().min(3).max(500).required(),
     notes: Joi.string().trim().min(3).max(1500).required(),
     rawMaterials: Joi.array().items(
-      Joi.object({ rawMaterialId: Joi.string().hex().length(24).required(), quantity: Joi.number().positive().required() })
+      Joi.object({ rawMaterialId: Joi.string().hex().length(24).required(), quantity: Joi.number().integer().min(1).required() })
     ).min(1).required(),
     deliveryLocation: deliverySchema.optional(),
   }).validate(obj);
