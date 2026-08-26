@@ -2,6 +2,7 @@ const asyncHandler = require("express-async-handler");
 const bcrypt = require("bcryptjs");
 const { User, validateRegisterAdmin, validateUpdateUser } = require("../models/User");
 const { Role } = require("../models/Role");
+const { Order } = require("../models/Order");
 const { localizeJoiError } = require("../utils/localization");
 
 const isAdmin = (req) => ["admin", "superadmin", "أدمن"].includes(String(req.user?.role?.name || "").trim().toLowerCase());
@@ -25,7 +26,22 @@ exports.getAllUsersCtrl = asyncHandler(async (req, res) => {
   if (["desc", "0"].includes(orderByAlpha)) sortOption = { "fullName.firstName": -1, "fullName.lastName": -1 };
   const users = await User.find(filter).populate("role").skip((Number(page) - 1) * Number(perPage)).limit(Number(perPage)).sort(sortOption);
   const documentCount = await User.countDocuments(filter);
-  res.status(200).json({ users, pagination: { page: Number(page), perPage: Number(perPage), count: users.length, documentCount } });
+
+  let responseUsers = users;
+  if (roleGroup === "employee" && users.length > 0) {
+    const employeeIds = users.map((user) => user._id);
+    const orderCounts = await Order.aggregate([
+      { $match: { employee: { $in: employeeIds } } },
+      { $group: { _id: "$employee", count: { $sum: 1 } } },
+    ]);
+    const countByEmployee = new Map(orderCounts.map((item) => [String(item._id), item.count]));
+    responseUsers = users.map((user) => ({
+      ...user.toObject(),
+      assignedOrdersCount: countByEmployee.get(String(user._id)) || 0,
+    }));
+  }
+
+  res.status(200).json({ users: responseUsers, pagination: { page: Number(page), perPage: Number(perPage), count: users.length, documentCount } });
 });
 
 exports.getUserByIdCtrl = asyncHandler(async (req, res) => {
