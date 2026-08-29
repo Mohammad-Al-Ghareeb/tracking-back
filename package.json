@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon app",
     "start": "node app",
+    "db:seed": "node scripts/seed.js",
     "migrate:orders": "node scripts/migrate-order-data.js"
   },
   "author": "Abdulrahman",
