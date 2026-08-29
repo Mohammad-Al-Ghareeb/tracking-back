@@ -21,6 +21,7 @@ app.use("/api/users", require("./routes/userRoutes"));
 app.use("/api/orders", require("./routes/orderRoutes"));
 app.use("/api/roles", require("./routes/roleRoutes"));
 app.use("/api/raw-materials", require("./routes/rawMaterialRoutes"));
+app.use("/api/product-configurations", require("./routes/productConfigurationRoutes"));
 app.use("/api/expenses", require("./routes/expenseRoutes"));
 app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));

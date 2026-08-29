@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "nodemon app",
     "start": "node app",
-    "db:seed": "node scripts/seed.js",
-    "migrate:orders": "node scripts/migrate-order-data.js"
+    "migrate:orders": "node scripts/migrate-order-data.js",
+    "migrate:tracking-v2": "node scripts/migrate-tracking-v2.js"
   },
   "author": "Abdulrahman",
   "engines": {
