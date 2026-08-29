@@ -5,8 +5,7 @@ const { User } = require("../models/User");
 const { RawMaterial } = require("../models/RawMaterial");
 const { Role } = require("../models/Role");
 
-const EMPLOYEE_ROLE_NAMES = ["employee", "worker", "موظف", "عامل"];
-const CUSTOMER_ROLE_NAMES = ["customer", "user", "مستخدم", "زبون"];
+const { getRoleGroup } = require("../utils/roleAccess");
 
 const getMonthRange = (month) => {
   const value = month && /^\d{4}-\d{2}$/.test(month) ? month : new Date().toISOString().slice(0, 7);
@@ -18,7 +17,7 @@ exports.getFinanceCtrl = asyncHandler(async (req, res) => {
   const { value, start, end } = getMonthRange(req.query.month);
   const [revenueResult, expenseResult, rawMaterialsAdded] = await Promise.all([
     Order.aggregate([
-      { $match: { status: "DELIVERY", deliveredAt: { $gte: start, $lt: end } } },
+      { $match: { status: "DELIVERED", deliveredAt: { $gte: start, $lt: end } } },
       { $group: { _id: null, total: { $sum: "$totalPrice" } } },
     ]),
     Expense.aggregate([
@@ -53,19 +52,18 @@ exports.getFinanceCtrl = asyncHandler(async (req, res) => {
 });
 
 exports.getSummaryCtrl = asyncHandler(async (req, res) => {
-  const productionStatuses = ["CUTTING", "SEWING", "PRINTING", "PACKAGING", "STORAGE"];
-  const [employeeRoleIds, customerRoleIds] = await Promise.all([
-    Role.find({ name: { $in: EMPLOYEE_ROLE_NAMES } }).distinct("_id"),
-    Role.find({ name: { $in: CUSTOMER_ROLE_NAMES } }).distinct("_id"),
-  ]);
+  const productionStatuses = ["CUTTING", "SEWING", "PRINTING", "PACKAGING", "STORAGE", "DELIVERY"];
+  const allRoles = await Role.find({});
+  const employeeRoleIds = allRoles.filter((role) => getRoleGroup(role) === "EMPLOYEE").map((role) => role._id);
+  const customerRoleIds = allRoles.filter((role) => getRoleGroup(role) === "CUSTOMER").map((role) => role._id);
   const [pendingOrders, inProduction, deliveredOrders, users, employees, customers, lowStockMaterials] = await Promise.all([
     Order.countDocuments({ status: "PENDING" }),
     Order.countDocuments({ status: { $in: productionStatuses } }),
-    Order.countDocuments({ status: "DELIVERY" }),
+    Order.countDocuments({ status: "DELIVERED" }),
     User.countDocuments({ isDeleted: false }),
     User.countDocuments({ isDeleted: false, role: { $in: employeeRoleIds } }),
     User.countDocuments({ isDeleted: false, role: { $in: customerRoleIds } }),
-    RawMaterial.countDocuments({ isActive: true, $expr: { $lte: [{ $subtract: ["$stockQuantity", "$reservedQuantity"] }, "$minimumStock"] } }),
+    RawMaterial.countDocuments({ $expr: { $lte: [{ $subtract: ["$stockQuantity", "$reservedQuantity"] }, "$minimumStock"] } }),
   ]);
   res.status(200).json({ pendingOrders, inProduction, deliveredOrders, users, employees, customers, lowStockMaterials });
 });

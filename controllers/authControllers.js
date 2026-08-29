@@ -4,6 +4,8 @@ const { User, validateRegisterUser, validateLoginUser } = require("../models/Use
 const { Role } = require("../models/Role");
 const { localizeJoiError } = require("../utils/localization");
 const { generateTokenPair, verifyRefreshToken } = require("../utils/authTokens");
+const { normalizePhoneNumber } = require("../utils/phone");
+const { getRoleGroup } = require("../utils/roleAccess");
 
 function buildAuthTokenPayload(user) {
   const tokens = generateTokenPair(user);
@@ -34,10 +36,11 @@ exports.registerUser = asyncHandler(async (req, res) => {
   const normalizedEmail = req.body.email.trim().toLowerCase();
   const { password } = req.body;
   if (await User.findOne({ email: normalizedEmail })) return res.status(400).json({ message: req.t("auth.emailExists") });
-  const roleExists = await Role.findOne({ name: { $in: CUSTOMER_ROLE_NAMES } });
+  const roles = await Role.find({});
+  const roleExists = roles.find((role) => getRoleGroup(role) === "CUSTOMER") || await Role.findOne({ name: { $in: CUSTOMER_ROLE_NAMES } });
   if (!roleExists) return res.status(400).json({ message: req.t("auth.customerRoleMissing") });
   const username = await generateUniqueUsername(normalizedEmail);
-  const user = await User.create({ fullName: req.body.fullName, email: normalizedEmail, username, role: roleExists._id, password: await bcrypt.hash(password, 10) });
+  const user = await User.create({ fullName: req.body.fullName, email: normalizedEmail, phoneNumber: normalizePhoneNumber(req.body.phoneNumber), username, role: roleExists._id, password: await bcrypt.hash(password, 10), isActive: true });
   await user.populate("role");
   disableAuthResponseCaching(res);
   res.status(201).json({ message: req.t("auth.registerSuccess"), user, ...buildAuthTokenPayload(user) });

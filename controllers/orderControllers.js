@@ -10,13 +10,16 @@ const {
 const { RawMaterial } = require("../models/RawMaterial");
 const { User } = require("../models/User");
 const { localizeJoiError, localizedError } = require("../utils/localization");
+const { isEmployeeRole } = require("../utils/roleAccess");
+const { calculateConfigurationUnitPrice, validateProductConfigurationPayload, buildOrderDescription } = require("../config/productConfigurations");
 
-const REVIEWABLE_EMPLOYEE_STAGES = new Set(["CUTTING", "SEWING", "PRINTING", "PACKAGING", "STORAGE"]);
+const REVIEWABLE_EMPLOYEE_STAGES = new Set(["CUTTING", "SEWING", "PRINTING", "PACKAGING", "STORAGE", "DELIVERY"]);
 
 const populateOrder = (query) =>
   query.populate([
     { path: "customer" },
     { path: "employee" },
+    { path: "deliveryEmployee" },
     { path: "rawMaterials.rawMaterial" },
     { path: "stageCompletionRequests.employee" },
     { path: "stageCompletionRequests.reviewedBy" },
@@ -28,7 +31,7 @@ const buildCustomerMaterialLines = async (req, rawMaterials) => {
     throw localizedError(req, "orders.duplicateMaterial", 400);
   }
 
-  const materials = await RawMaterial.find({ _id: { $in: requestedIds }, isActive: true });
+  const materials = await RawMaterial.find({ _id: { $in: requestedIds } });
   if (materials.length !== requestedIds.length) {
     throw localizedError(req, "orders.materialUnavailable", 400);
   }
@@ -54,7 +57,6 @@ const reserveIncreases = async (req, deltas) => {
       const updated = await RawMaterial.findOneAndUpdate(
         {
           _id: rawMaterial,
-          isActive: true,
           $expr: {
             $gte: [{ $subtract: ["$stockQuantity", "$reservedQuantity"] }, quantity],
           },
@@ -109,22 +111,34 @@ exports.createMyOrderCtrl = asyncHandler(async (req, res) => {
   const { error } = validateCustomerOrder(req.body);
   if (error) return res.status(400).json({ message: localizeJoiError(req, error) });
 
-  const lines = await buildCustomerMaterialLines(req, req.body.rawMaterials);
-  const applied = await reserveIncreases(
-    req,
-    lines.map((line) => ({ rawMaterial: line.rawMaterial, quantity: line.quantity }))
-  );
+  const isConfigured = Boolean(req.body.productType);
+  const configError = isConfigured ? validateProductConfigurationPayload(req.body) : null;
+  if (configError) return res.status(400).json({ message: configError });
+  const materialInputs = isConfigured ? [{ rawMaterialId: req.body.materialId, quantity: req.body.orderQuantity }] : req.body.rawMaterials;
+  const lines = await buildCustomerMaterialLines(req, materialInputs);
+  const applied = await reserveIncreases(req, lines.map((line) => ({ rawMaterial: line.rawMaterial, quantity: line.quantity })));
 
   try {
     const materialCost = lines.reduce((sum, line) => sum + line.subtotal, 0);
+    const configurationUnitPrice = isConfigured ? calculateConfigurationUnitPrice(req.body.productType, req.body.designAttributes, req.body.customizations) : 0;
+    const configurationCost = configurationUnitPrice * Number(req.body.orderQuantity || 1);
     const order = await Order.create({
       customer: req.user.id,
-      description: req.body.description,
-      notes: req.body.notes,
+      description: isConfigured ? buildOrderDescription(req.body.productType, req.body.designAttributes) : req.body.description,
+      notes: req.body.notes?.trim() || null,
+      productType: req.body.productType,
+      designAttributes: req.body.designAttributes || {},
+      measurementMode: req.body.measurementMode,
+      standardSize: req.body.standardSize || null,
+      measurements: req.body.measurements || {},
+      customizations: req.body.customizations || {},
+      orderQuantity: Number(req.body.orderQuantity || 1),
+      configurationUnitPrice,
+      configurationCost,
       rawMaterials: lines,
       materialCost,
       additionalCost: 0,
-      totalPrice: materialCost,
+      totalPrice: materialCost + configurationCost,
       deliveryLocation: req.body.deliveryLocation,
       status: "PENDING",
     });
@@ -144,11 +158,15 @@ exports.updateMyOrderCtrl = asyncHandler(async (req, res) => {
 
   const existingOrder = await Order.findOne({ _id: req.params.id, customer: req.user.id });
   if (!existingOrder) return res.status(404).json({ message: req.t("orders.notFound") });
-  if (existingOrder.status !== "PENDING" || existingOrder.inventoryConsumed) {
+  if (existingOrder.status !== "PENDING" || existingOrder.inventoryConsumed || existingOrder.isCancelled || existingOrder.isRejected) {
     return res.status(409).json({ message: req.t("orders.notEditable") });
   }
 
-  const lines = await buildCustomerMaterialLines(req, req.body.rawMaterials);
+  const isConfigured = Boolean(req.body.productType);
+  const configError = isConfigured ? validateProductConfigurationPayload(req.body) : null;
+  if (configError) return res.status(400).json({ message: configError });
+  const materialInputs = isConfigured ? [{ rawMaterialId: req.body.materialId, quantity: req.body.orderQuantity }] : req.body.rawMaterials;
+  const lines = await buildCustomerMaterialLines(req, materialInputs);
   const previousQuantities = new Map(
     existingOrder.rawMaterials.map((line) => [line.rawMaterial.toString(), Number(line.quantity)])
   );
@@ -167,6 +185,8 @@ exports.updateMyOrderCtrl = asyncHandler(async (req, res) => {
 
   const appliedIncreases = await reserveIncreases(req, reservationIncreases);
   const materialCost = lines.reduce((sum, line) => sum + line.subtotal, 0);
+  const configurationUnitPrice = isConfigured ? calculateConfigurationUnitPrice(req.body.productType, req.body.designAttributes, req.body.customizations) : Number(existingOrder.configurationUnitPrice || 0);
+  const configurationCost = isConfigured ? configurationUnitPrice * Number(req.body.orderQuantity || 1) : Number(existingOrder.configurationCost || 0);
   const deliveryLocation = {
     address: req.body.deliveryLocation?.address || "",
     city: req.body.deliveryLocation?.city || "",
@@ -185,11 +205,20 @@ exports.updateMyOrderCtrl = asyncHandler(async (req, res) => {
       },
       {
         $set: {
-          description: req.body.description,
-          notes: req.body.notes,
+          description: isConfigured ? buildOrderDescription(req.body.productType, req.body.designAttributes) : req.body.description,
+          notes: req.body.notes?.trim() || null,
+          productType: req.body.productType,
+          designAttributes: req.body.designAttributes || {},
+          measurementMode: req.body.measurementMode,
+          standardSize: req.body.standardSize || null,
+          measurements: req.body.measurements || {},
+          customizations: req.body.customizations || {},
+          orderQuantity: Number(req.body.orderQuantity || 1),
+          configurationUnitPrice,
+          configurationCost,
           rawMaterials: lines,
           materialCost,
-          totalPrice: materialCost + Number(existingOrder.additionalCost || 0),
+          totalPrice: materialCost + configurationCost + Number(existingOrder.additionalCost || 0),
           deliveryLocation,
         },
       },
@@ -228,7 +257,7 @@ exports.getMyOrderByIdCtrl = asyncHandler(async (req, res) => {
 
 exports.getAssignedOrdersCtrl = asyncHandler(async (req, res) => {
   const { page = 1, perPage = 50, status } = req.query;
-  const filter = { employee: req.user.id };
+  const filter = { $or: [{ employee: req.user.id }, { deliveryEmployee: req.user.id }] };
   if (status) filter.status = status;
   const orders = await populateOrder(Order.find(filter))
     .sort({ createdAt: -1 })
@@ -241,7 +270,7 @@ exports.getAssignedOrdersCtrl = asyncHandler(async (req, res) => {
 exports.getAssignedOrderByIdCtrl = asyncHandler(async (req, res) => {
   const { error } = validateOrderId({ id: req.params.id });
   if (error) return res.status(400).json({ message: req.t("orders.invalidId") });
-  const order = await populateOrder(Order.findOne({ _id: req.params.id, employee: req.user.id }));
+  const order = await populateOrder(Order.findOne({ _id: req.params.id, $or: [{ employee: req.user.id }, { deliveryEmployee: req.user.id }] }));
   if (!order) return res.status(404).json({ message: req.t("orders.notFound") });
   res.status(200).json(order);
 });
@@ -250,10 +279,14 @@ exports.requestStageCompletionCtrl = asyncHandler(async (req, res) => {
   const { error } = validateOrderId({ id: req.params.id });
   if (error) return res.status(400).json({ message: req.t("orders.invalidId") });
 
-  const order = await Order.findOne({ _id: req.params.id, employee: req.user.id });
+  const order = await Order.findOne({ _id: req.params.id, $or: [{ employee: req.user.id }, { deliveryEmployee: req.user.id }] });
   if (!order) return res.status(404).json({ message: req.t("orders.notFound") });
   if (!REVIEWABLE_EMPLOYEE_STAGES.has(order.status)) {
     return res.status(409).json({ message: req.t("orders.stageCompletionUnavailable") });
+  }
+  const responsibleEmployee = order.status === "DELIVERY" ? order.deliveryEmployee : order.employee;
+  if (String(responsibleEmployee || "") !== String(req.user.id)) {
+    return res.status(403).json({ message: req.t("orders.stageCompletionUnavailable") });
   }
 
   const alreadyPending = order.stageCompletionRequests.some(
@@ -306,7 +339,7 @@ exports.updateOrderCtrl = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
   if (!order) return res.status(404).json({ message: req.t("orders.notFound") });
   Object.assign(order, req.body);
-  order.totalPrice = Number(order.materialCost || 0) + Number(order.additionalCost || 0);
+  order.totalPrice = Number(order.materialCost || 0) + Number(order.configurationCost || 0) + Number(order.additionalCost || 0);
   await order.save();
   res.status(200).json(await populateOrder(Order.findById(order._id)));
 });
@@ -324,8 +357,7 @@ exports.assignOrderCtrl = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: req.t("orders.employeeUnavailable") });
   }
 
-  const employeeRole = String(assignedEmployee.role?.name || "").trim().toLowerCase();
-  if (!["employee", "worker", "موظف", "عامل"].includes(employeeRole)) {
+  if (!isEmployeeRole(assignedEmployee.role)) {
     return res.status(400).json({ message: req.t("orders.notEmployee") });
   }
 
@@ -343,7 +375,7 @@ exports.assignOrderCtrl = asyncHandler(async (req, res) => {
   order.employee = employee;
   order.expectedFinishDate = expectedFinishDate;
   order.additionalCost = Math.max(0, Number(additionalCost) || 0);
-  order.totalPrice = Number(order.materialCost || 0) + order.additionalCost;
+  order.totalPrice = Number(order.materialCost || 0) + Number(order.configurationCost || 0) + order.additionalCost;
   await order.save();
   res.status(200).json(await populateOrder(Order.findById(order._id)));
 });
@@ -352,8 +384,11 @@ exports.updateOrderStatusCtrl = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
   if (!order) return res.status(404).json({ message: req.t("orders.notFound") });
   const nextStatus = req.body.status;
-  if (NEXT_STATUS[order.status] !== nextStatus) {
+  if (order.isCancelled || order.isRejected || NEXT_STATUS[order.status] !== nextStatus) {
     return res.status(400).json({ message: req.t("orders.invalidTransition", { from: order.status, to: nextStatus }) });
+  }
+  if (order.status === "DELIVERY" && nextStatus === "DELIVERED") {
+    return res.status(409).json({ message: req.t("orders.deliveryCompletionRequired") });
   }
 
   if (order.status === "PENDING") {
@@ -381,7 +416,7 @@ exports.updateOrderStatusCtrl = asyncHandler(async (req, res) => {
     (item) =>
       item.status === "PENDING" &&
       item.stage === order.status &&
-      String(item.employee) === String(order.employee || "")
+      String(item.employee) === String(order.status === "DELIVERY" ? order.deliveryEmployee : order.employee || "")
   );
   if (pendingCompletion) {
     pendingCompletion.status = "APPROVED";
@@ -389,8 +424,9 @@ exports.updateOrderStatusCtrl = asyncHandler(async (req, res) => {
     pendingCompletion.reviewedBy = req.user.id;
   }
 
+  if (nextStatus === "DELIVERY" && !order.deliveryEmployee) return res.status(400).json({ message: req.t("orders.deliveryEmployeeRequired") });
   order.status = nextStatus;
-  if (nextStatus === "DELIVERY" && !order.deliveredAt) order.deliveredAt = new Date();
+  if (nextStatus === "DELIVERED" && !order.deliveredAt) order.deliveredAt = new Date();
   await order.save();
   res.status(200).json(await populateOrder(Order.findById(order._id)));
 });
@@ -412,7 +448,7 @@ const reviewStageCompletion = async (req, res, decision) => {
   if (decision === "APPROVED") {
     if (
       completionRequest.stage !== order.status ||
-      String(completionRequest.employee) !== String(order.employee || "") ||
+      String(completionRequest.employee) !== String(order.status === "DELIVERY" ? order.deliveryEmployee : order.employee || "") ||
       !NEXT_STATUS[order.status]
     ) {
       return res.status(409).json({ message: req.t("orders.stageCompletionOutdated") });
@@ -421,8 +457,9 @@ const reviewStageCompletion = async (req, res, decision) => {
     completionRequest.status = "APPROVED";
     completionRequest.reviewedAt = new Date();
     completionRequest.reviewedBy = req.user.id;
+    if (nextStatus === "DELIVERY" && !order.deliveryEmployee) return res.status(400).json({ message: req.t("orders.deliveryEmployeeRequired") });
     order.status = nextStatus;
-    if (nextStatus === "DELIVERY" && !order.deliveredAt) order.deliveredAt = new Date();
+    if (nextStatus === "DELIVERED" && !order.deliveredAt) order.deliveredAt = new Date();
   } else {
     completionRequest.status = "REJECTED";
     completionRequest.reviewedAt = new Date();
@@ -454,4 +491,46 @@ exports.deleteOrderCtrl = asyncHandler(async (req, res) => {
   }
   await order.deleteOne();
   res.status(200).json({ message: req.t("orders.deleted") });
+});
+
+exports.cancelMyOrderCtrl = asyncHandler(async (req, res) => {
+  const order = await Order.findOneAndUpdate(
+    { _id: req.params.id, customer: req.user.id, status: "PENDING", inventoryConsumed: { $ne: true }, isCancelled: { $ne: true }, isRejected: { $ne: true } },
+    { $set: { isCancelled: true, cancelledAt: new Date(), cancelReason: req.body?.reason || null } },
+    { new: false }
+  );
+  if (!order) {
+    const exists = await Order.exists({ _id: req.params.id, customer: req.user.id });
+    return res.status(exists ? 409 : 404).json({ message: req.t(exists ? "orders.notEditable" : "orders.notFound") });
+  }
+  for (const line of order.rawMaterials) {
+    await RawMaterial.updateOne({ _id: line.rawMaterial, reservedQuantity: { $gte: line.quantity } }, { $inc: { reservedQuantity: -line.quantity } });
+  }
+  res.status(200).json(await populateOrder(Order.findById(order._id)));
+});
+
+exports.rejectOrderCtrl = asyncHandler(async (req, res) => {
+  const order = await Order.findOneAndUpdate(
+    { _id: req.params.id, status: "PENDING", inventoryConsumed: { $ne: true }, isCancelled: { $ne: true }, isRejected: { $ne: true } },
+    { $set: { isRejected: true, rejectedAt: new Date(), rejectReason: req.body?.reason || null, rejectedBy: req.user.id } },
+    { new: false }
+  );
+  if (!order) {
+    const exists = await Order.exists({ _id: req.params.id });
+    return res.status(exists ? 409 : 404).json({ message: req.t(exists ? "orders.notEditable" : "orders.notFound") });
+  }
+  for (const line of order.rawMaterials) {
+    await RawMaterial.updateOne({ _id: line.rawMaterial, reservedQuantity: { $gte: line.quantity } }, { $inc: { reservedQuantity: -line.quantity } });
+  }
+  res.status(200).json(await populateOrder(Order.findById(order._id)));
+});
+
+exports.assignDeliveryEmployeeCtrl = asyncHandler(async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ message: req.t("orders.notFound") });
+  const employee = await User.findById(req.body.employee).populate("role");
+  if (!employee || employee.isDeleted || !employee.isActive || !isEmployeeRole(employee.role)) return res.status(400).json({ message: req.t("orders.employeeUnavailable") });
+  order.deliveryEmployee = employee._id;
+  await order.save();
+  res.status(200).json(await populateOrder(Order.findById(order._id)));
 });

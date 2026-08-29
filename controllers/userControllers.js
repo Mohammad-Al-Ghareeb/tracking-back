@@ -4,12 +4,10 @@ const { User, validateRegisterAdmin, validateUpdateUser } = require("../models/U
 const { Role } = require("../models/Role");
 const { Order } = require("../models/Order");
 const { localizeJoiError } = require("../utils/localization");
+const { normalizePhoneNumber } = require("../utils/phone");
+const { isAdminRole, getRoleGroup } = require("../utils/roleAccess");
 
-const isAdmin = (req) => ["admin", "superadmin", "أدمن"].includes(String(req.user?.role?.name || "").trim().toLowerCase());
-const ROLE_GROUP_NAMES = {
-  employee: ["employee", "worker", "موظف", "عامل"],
-  customer: ["customer", "user", "مستخدم", "زبون"],
-};
+const isAdmin = (req) => isAdminRole(req.user?.role);
 
 exports.getAllUsersCtrl = asyncHandler(async (req, res) => {
   const { page = 1, perPage = 10, minSalary, maxSalary, orderByAlpha, role, roleGroup } = req.query;
@@ -17,8 +15,10 @@ exports.getAllUsersCtrl = asyncHandler(async (req, res) => {
   if (minSalary) filter.salary = { ...filter.salary, $gte: Number(minSalary) };
   if (maxSalary) filter.salary = { ...filter.salary, $lte: Number(maxSalary) };
   if (role) filter.role = role;
-  if (!role && ROLE_GROUP_NAMES[roleGroup]) {
-    const roleIds = await Role.find({ name: { $in: ROLE_GROUP_NAMES[roleGroup] } }).distinct("_id");
+  if (!role && ["employee", "customer", "admin"].includes(String(roleGroup || "").toLowerCase())) {
+    const group = String(roleGroup).toUpperCase();
+    const allRoles = await Role.find({});
+    const roleIds = allRoles.filter((item) => getRoleGroup(item) === group).map((item) => item._id);
     filter.role = { $in: roleIds };
   }
   let sortOption = { createdAt: -1 };
@@ -28,17 +28,17 @@ exports.getAllUsersCtrl = asyncHandler(async (req, res) => {
   const documentCount = await User.countDocuments(filter);
 
   let responseUsers = users;
-  if (roleGroup === "employee" && users.length > 0) {
+  if (String(roleGroup).toLowerCase() === "employee" && users.length > 0) {
     const employeeIds = users.map((user) => user._id);
     const orderCounts = await Order.aggregate([
-      { $match: { employee: { $in: employeeIds } } },
-      { $group: { _id: "$employee", count: { $sum: 1 } } },
+      { $match: { $or: [{ employee: { $in: employeeIds } }, { deliveryEmployee: { $in: employeeIds } }] } },
+      { $project: { employees: { $setUnion: [["$employee"], ["$deliveryEmployee"]] } } },
+      { $unwind: "$employees" },
+      { $match: { employees: { $in: employeeIds } } },
+      { $group: { _id: "$employees", count: { $sum: 1 } } },
     ]);
     const countByEmployee = new Map(orderCounts.map((item) => [String(item._id), item.count]));
-    responseUsers = users.map((user) => ({
-      ...user.toObject(),
-      assignedOrdersCount: countByEmployee.get(String(user._id)) || 0,
-    }));
+    responseUsers = users.map((user) => ({ ...user.toObject(), assignedOrdersCount: countByEmployee.get(String(user._id)) || 0 }));
   }
 
   res.status(200).json({ users: responseUsers, pagination: { page: Number(page), perPage: Number(perPage), count: users.length, documentCount } });
@@ -51,18 +51,20 @@ exports.getUserByIdCtrl = asyncHandler(async (req, res) => {
 });
 
 exports.createUserCtrl = asyncHandler(async (req, res) => {
+  req.body.phoneNumber = normalizePhoneNumber(req.body.phoneNumber);
   const { error } = validateRegisterAdmin(req.body);
   if (error) return res.status(400).json({ message: localizeJoiError(req, error) });
   const { email, username, password, role } = req.body;
   if (await User.findOne({ email })) return res.status(400).json({ message: req.t("auth.emailExists") });
   if (await User.findOne({ username })) return res.status(400).json({ message: req.t("users.usernameExists") });
   if (!(await Role.findById(role))) return res.status(400).json({ message: req.t("users.invalidRole") });
-  const user = await User.create({ ...req.body, password: await bcrypt.hash(password, 10) });
+  const user = await User.create({ ...req.body, phoneNumber: normalizePhoneNumber(req.body.phoneNumber), password: await bcrypt.hash(password, 10) });
   await user.populate("role");
   res.status(201).json(user);
 });
 
 exports.updateUserCtrl = asyncHandler(async (req, res) => {
+  if (req.body.phoneNumber !== undefined) req.body.phoneNumber = normalizePhoneNumber(req.body.phoneNumber);
   const { error } = validateUpdateUser(req.body);
   if (error) return res.status(400).json({ message: localizeJoiError(req, error) });
   if (!isAdmin(req) && req.user.id !== req.params.id) return res.status(403).json({ message: req.t("users.updateForbidden") });
