@@ -13,16 +13,16 @@ const roles = [
 
 const users = [
   {
-    fullName: { firstName: "Admin", lastName: "User" },
+    fullName: { firstName: "Admin", lastName: "Admin" },
     username: "admin",
     email: "admin@gmail.com",
     password: "12345678",
     role: "admin",
   },
   {
-    fullName: { firstName: "Jawad", lastName: "Customer" },
-    username: "jawad",
-    email: "jawad@gmail.com",
+    fullName: { firstName: "Kinda", lastName: "Customer" },
+    username: "Kinda",
+    email: "kinda@gmail.com",
     password: "12345678",
     role: "customer",
   },
