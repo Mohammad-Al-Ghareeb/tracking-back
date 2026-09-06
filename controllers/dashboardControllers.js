@@ -51,19 +51,27 @@ exports.getFinanceCtrl = asyncHandler(async (req, res) => {
   });
 });
 
+const getAvailableQuantityExpression = () => ({
+  $subtract: [
+    { $ifNull: ["$stockQuantity", 0] },
+    { $ifNull: ["$reservedQuantity", 0] },
+  ],
+});
+
 exports.getSummaryCtrl = asyncHandler(async (req, res) => {
   const productionStatuses = ["CUTTING", "SEWING", "PRINTING", "PACKAGING", "STORAGE", "DELIVERY"];
   const allRoles = await Role.find({});
   const employeeRoleIds = allRoles.filter((role) => getRoleGroup(role) === "EMPLOYEE").map((role) => role._id);
   const customerRoleIds = allRoles.filter((role) => getRoleGroup(role) === "CUSTOMER").map((role) => role._id);
-  const [pendingOrders, inProduction, deliveredOrders, users, employees, customers, lowStockMaterials] = await Promise.all([
+  const [pendingOrders, inProduction, deliveredOrders, users, employees, customers, lowStockMaterials, inactiveRawMaterials] = await Promise.all([
     Order.countDocuments({ status: "PENDING" }),
     Order.countDocuments({ status: { $in: productionStatuses } }),
     Order.countDocuments({ status: "DELIVERED" }),
     User.countDocuments({ isDeleted: false }),
     User.countDocuments({ isDeleted: false, role: { $in: employeeRoleIds } }),
     User.countDocuments({ isDeleted: false, role: { $in: customerRoleIds } }),
-    RawMaterial.countDocuments({ $expr: { $lte: [{ $subtract: ["$stockQuantity", "$reservedQuantity"] }, "$minimumStock"] } }),
+    RawMaterial.countDocuments({ $expr: { $lte: [getAvailableQuantityExpression(), { $ifNull: ["$minimumStock", 0] }] } }),
+    RawMaterial.countDocuments({ $expr: { $lte: [getAvailableQuantityExpression(), 0] } }),
   ]);
-  res.status(200).json({ pendingOrders, inProduction, deliveredOrders, users, employees, customers, lowStockMaterials });
+  res.status(200).json({ pendingOrders, inProduction, deliveredOrders, users, employees, customers, lowStockMaterials, inactiveRawMaterials });
 });

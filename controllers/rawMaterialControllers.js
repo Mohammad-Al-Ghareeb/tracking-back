@@ -8,19 +8,26 @@ const parseColors = (value) => {
   return uniqueColors.length > 0 ? uniqueColors : [""];
 };
 
+const getAvailableQuantityExpression = () => ({
+  $subtract: [
+    { $ifNull: ["$stockQuantity", 0] },
+    { $ifNull: ["$reservedQuantity", 0] },
+  ],
+});
+
 exports.getAllRawMaterialsCtrl = asyncHandler(async (req, res) => {
   const { page = 1, perPage = 20, category, availability } = req.query;
   const filter = {};
   if (category) filter.category = category;
-  if (availability === "available") filter.$expr = { $gt: [{ $subtract: ["$stockQuantity", "$reservedQuantity"] }, 0] };
-  if (availability === "unavailable") filter.$expr = { $lte: [{ $subtract: ["$stockQuantity", "$reservedQuantity"] }, 0] };
+  if (availability === "available") filter.$expr = { $gt: [getAvailableQuantityExpression(), 0] };
+  if (availability === "unavailable") filter.$expr = { $lte: [getAvailableQuantityExpression(), 0] };
   const items = await RawMaterial.find(filter).sort({ createdAt: -1 }).skip((Number(page) - 1) * Number(perPage)).limit(Number(perPage));
   const documentCount = await RawMaterial.countDocuments(filter);
   res.status(200).json({ items, pagination: { page: Number(page), perPage: Number(perPage), count: items.length, documentCount } });
 });
 
 exports.getAvailableRawMaterialsCtrl = asyncHandler(async (req, res) => {
-  const items = await RawMaterial.find({ $expr: { $gt: [{ $subtract: ["$stockQuantity", "$reservedQuantity"] }, 0] } }).sort({ name: 1, color: 1 });
+  const items = await RawMaterial.find({ $expr: { $gt: [getAvailableQuantityExpression(), 0] } }).sort({ name: 1, color: 1 });
   res.status(200).json({ items });
 });
 
