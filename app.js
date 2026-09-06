@@ -8,13 +8,20 @@ const swaggerUi = require("swagger-ui-express");
 const path = require("path");
 require("dotenv").config();
 
-connectToDb();
 const swaggerDocument = YAML.load(path.join(__dirname, "openapi.yaml"));
 const app = express();
 app.use(express.json());
 app.use(languageMiddleware);
 app.use("/images", express.static(path.join(__dirname, "images")));
 app.use(cors({ origin: "*" }));
+app.use(async (req, res, next) => {
+  try {
+    await connectToDb();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/users", require("./routes/userRoutes"));
@@ -37,9 +44,13 @@ module.exports = app;
 
 if (require.main === module) {
   const PORT = process.env.PORT || 8000;
-  app.listen(PORT, () =>
-    console.log(
-      `Server is running in ${process.env.NODE_ENV} mode on port ${PORT}`,
-    ),
-  );
+  connectToDb()
+    .then(() => {
+      app.listen(PORT, () =>
+        console.log(
+          `Server is running in ${process.env.NODE_ENV} mode on port ${PORT}`,
+        ),
+      );
+    })
+    .catch(() => (process.exitCode = 1));
 }
