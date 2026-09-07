@@ -57,7 +57,9 @@ exports.createUserCtrl = asyncHandler(async (req, res) => {
   const { email, username, password, role } = req.body;
   if (await User.findOne({ email })) return res.status(400).json({ message: req.t("auth.emailExists") });
   if (await User.findOne({ username })) return res.status(400).json({ message: req.t("users.usernameExists") });
-  if (!(await Role.findById(role))) return res.status(400).json({ message: req.t("users.invalidRole") });
+  const selectedRole = await Role.findById(role);
+  if (!selectedRole) return res.status(400).json({ message: req.t("users.invalidRole") });
+  if (getRoleGroup(selectedRole) === "ADMIN") return res.status(400).json({ message: req.t("users.employeeAdminForbidden") });
   const user = await User.create({ ...req.body, phoneNumber: normalizePhoneNumber(req.body.phoneNumber), password: await bcrypt.hash(password, 10) });
   await user.populate("role");
   res.status(201).json(user);
@@ -71,7 +73,17 @@ exports.updateUserCtrl = asyncHandler(async (req, res) => {
   if (!isAdmin(req)) { delete req.body.role; delete req.body.salary; delete req.body.isActive; delete req.body.isDeleted; }
   if (req.body.email) { const duplicateEmail = await User.findOne({ email: req.body.email, _id: { $ne: req.params.id } }); if (duplicateEmail) return res.status(400).json({ message: req.t("auth.emailExists") }); }
   if (req.body.username) { const duplicateUsername = await User.findOne({ username: req.body.username, _id: { $ne: req.params.id } }); if (duplicateUsername) return res.status(400).json({ message: req.t("users.usernameExists") }); }
-  if (req.body.role && !(await Role.findById(req.body.role))) return res.status(400).json({ message: req.t("users.invalidRole") });
+  if (req.body.role) {
+    const [targetUser, selectedRole] = await Promise.all([
+      User.findById(req.params.id).populate("role"),
+      Role.findById(req.body.role),
+    ]);
+    if (!targetUser || targetUser.isDeleted) return res.status(404).json({ message: req.t("auth.userNotFound") });
+    if (!selectedRole) return res.status(400).json({ message: req.t("users.invalidRole") });
+    if (getRoleGroup(targetUser.role) === "EMPLOYEE" && getRoleGroup(selectedRole) === "ADMIN") {
+      return res.status(400).json({ message: req.t("users.employeeAdminForbidden") });
+    }
+  }
   if (req.body.password) req.body.password = await bcrypt.hash(req.body.password, 10);
   const user = await User.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true, runValidators: true }).populate("role");
   if (!user) return res.status(404).json({ message: req.t("auth.userNotFound") });
